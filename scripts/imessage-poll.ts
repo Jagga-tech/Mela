@@ -5,8 +5,9 @@ import "./env";
 import { latestRowId, pollReplies } from "../src/integrations/imessage";
 import { isFromHost } from "../src/integrations/phone";
 
-const host = process.env.MELA_HOST_PHONE;
-if (!host) { console.error("MELA_HOST_PHONE is not set; add it to .env.local (the demo phone number)."); process.exit(1); }
+const hostEnv = process.env.MELA_HOST_PHONE;
+if (!hostEnv) { console.error("MELA_HOST_PHONE is not set; add it to .env.local (the demo phone number)."); process.exit(1); }
+const host: string = hostEnv;
 const url = `${process.env.MELA_API ?? "http://localhost:3000"}/api/webhooks/text-inbound`;
 
 async function main() {
