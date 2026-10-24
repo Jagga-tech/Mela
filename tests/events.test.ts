@@ -49,3 +49,32 @@ test("tryLock / unlock", async () => {
   assert.equal(tryLock("e1"), true);
   _resetLocks();
 });
+
+test("advanceStatus only moves forward; needs_planner allowed before approval", async () => {
+  const { advanceStatus, store } = await load();
+  const e = await store.createEvent("+15550003333");
+  e.status = "awaiting_approval";
+  assert.equal(advanceStatus(e, "calling"), false);
+  assert.equal(e.status, "awaiting_approval");
+  e.status = "calling";
+  assert.equal(advanceStatus(e, "awaiting_approval"), true);
+  assert.equal(e.status, "awaiting_approval");
+  e.status = "calling";
+  assert.equal(advanceStatus(e, "needs_planner"), true);
+  e.status = "paid";
+  assert.equal(advanceStatus(e, "needs_planner"), false);
+});
+
+test("quotesToPay picks one available quote per category in shortlist order", async () => {
+  const { quotesToPay, store } = await load();
+  const vendors = [...(await store.listVendors()),
+    { id: "venue-2", name: "V2", category: "venue" as const, phone: "", capacity: 200, priceHintUsd: null, accessibility: [], dietary: [] },
+    { id: "cater-2", name: "C2", category: "catering" as const, phone: "", capacity: null, priceHintUsd: null, accessibility: [], dietary: [] }];
+  const e = await store.createEvent("+15550004444");
+  const item = (vendorId: string) => ({ vendorId, fit: "fit" as const, conflicts: [], unknowns: [], reason: "" });
+  const quote = (vendorId: string, available: boolean | null) => ({ vendorId, callId: "c-" + vendorId, createdAt: "",
+    extract: { available, priceUsd: 100, depositUsd: null, terms: [], evidence: [], openQuestions: [] } });
+  e.shortlist = ["venue-casa-verde", "venue-2", "cater-2", "cater-la-mesa", "decor-flor"].map(item);
+  e.quotes = [quote("venue-2", true), quote("venue-casa-verde", true), quote("cater-2", false), quote("cater-la-mesa", true), quote("decor-flor", null)];
+  assert.deepEqual(quotesToPay(e, vendors).map((q) => q.vendorId), ["venue-casa-verde", "cater-la-mesa", "decor-flor"]);
+});

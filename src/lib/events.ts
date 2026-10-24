@@ -4,7 +4,8 @@ import { fence, runAgent } from "@/agents/harness";
 import { runIntake } from "@/agents/intake";
 import { extractQuote } from "@/agents/quote";
 import { DISCLOSURE } from "@/agents/outreach";
-import { leadSpec, makeLeadTools, sendText, setStatus, type LeadContext } from "@/agents/lead";
+import { isPastApproval, leadSpec, makeLeadTools, quotesToPay, sendText, setStatus, type LeadContext } from "@/agents/lead";
+export { advanceStatus, quotesToPay } from "@/agents/lead";
 import { store } from "@/lib/store";
 import { applyReply, parseReply, type ReplyOutcome } from "@/lib/approvals";
 import { amountToPayCents } from "@/lib/rules";
@@ -88,11 +89,12 @@ export async function startLeadRun(eventId: string, trigger: string): Promise<Ev
     const ctx: LeadContext = { event, store, channel, audit: event.audit };
     const state = { status: event.status, shortlist: event.shortlist,
       quotes: event.quotes.map((q) => ({ vendorId: q.vendorId, priceUsd: q.extract.priceUsd, depositUsd: q.extract.depositUsd, available: q.extract.available })),
-      approvals: event.approvals.map((a) => ({ kind: a.kind, status: a.status })) };
+      approvals: event.approvals.map((a) => ({ kind: a.kind, status: a.status })),
+      calls: event.calls.map((c) => ({ kind: c.kind, vendorId: c.vendorId, status: c.status })) };
     const input = `${trigger}\n\nBrief:\n${JSON.stringify(event.brief)}\n\nState:\n${JSON.stringify(state)}`;
     const r = await runAgent(leadSpec(makeLeadTools(ctx)), input, event.audit);
     const inFlight = event.calls.some((c) => c.status === "placed") || event.approvals.some((a) => a.status === "pending");
-    const pastApproval = ["approved", "paying", "paid", "done"].includes(event.status);
+    const pastApproval = isPastApproval(event);
     if (!r.ok || r.data.status === "blocked" || (r.data.status === "waiting" && !ctx.ended && !inFlight && !pastApproval)) {
       planner(event, `Lead run failed: ${r.ok ? r.data.summary : r.reason + (r.detail ? " " + r.detail : "")}`, trigger.slice(0, 200));
       if (!inFlight && !pastApproval) setStatus(event, "needs_planner");
@@ -140,10 +142,9 @@ export async function onCallEnded(callId: string, transcript: string): Promise<v
 async function runPayments(event: Event) {
   setStatus(event, "paying");
   await store.saveEvent(event);
-  for (const item of event.shortlist) {
-    const q = event.quotes.find((x) => x.vendorId === item.vendorId);
-    const vendor = await store.getVendor(item.vendorId);
-    if (!q || !vendor || q.extract.available === false) continue;
+  const vendors = await store.listVendors();
+  for (const q of quotesToPay(event, vendors)) {
+    const vendor = vendors.find((v) => v.id === q.vendorId)!;
     // payVendor mutates and saves this same event object; do not reload between vendors
     const r = await payVendor(event, store, getVisa(), vendor.id, amountToPayCents(q.extract), new Date());
     if (!r.ok) { await sendText(event, channel, event.hostPhone, `Payment to ${vendor.name} was not made (${r.refusal}).`); continue; }

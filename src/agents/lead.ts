@@ -10,15 +10,40 @@ import { createApproval } from "@/lib/approvals";
 import { summaryText } from "@/lib/notify";
 import type { Store } from "@/lib/store";
 import type { Channel } from "@/integrations/channel";
-import type { AuditEvent, Event, EventStatus, Vendor } from "@/lib/types";
+import { EVENT_STATUS_ORDER, type AuditEvent, type Event, type EventStatus, type Vendor, type VendorQuote } from "@/lib/types";
 
 export type LeadOutput = { status: "done" | "waiting" | "blocked"; summary: string };
 // ended: set by the tools that tell the Lead to stop (a call or an approval is now in flight)
 export type LeadContext = { event: Event; store: Store; channel: Channel; audit: AuditEvent[]; ended?: boolean };
 
+const PAST_APPROVAL: EventStatus[] = ["approved", "paying", "paid", "done"];
+export const isPastApproval = (e: Event) => PAST_APPROVAL.includes(e.status);
+
+// Forward-only status. needs_planner may be set from anything before approval.
+export function advanceStatus(event: Event, next: EventStatus): boolean {
+  const ok = next === "needs_planner" ? !isPastApproval(event) : EVENT_STATUS_ORDER.indexOf(next) > EVENT_STATUS_ORDER.indexOf(event.status);
+  if (ok) event.status = next;
+  return ok;
+}
+
 export function setStatus(event: Event, status: EventStatus) {
-  event.status = status;
-  event.audit.push({ at: new Date().toISOString(), actor: "orchestrator", action: "status", detail: status });
+  const from = event.status;
+  const at = new Date().toISOString();
+  if (advanceStatus(event, status)) event.audit.push({ at, actor: "orchestrator", action: "status", detail: status });
+  else if (from !== status) event.audit.push({ at, actor: "orchestrator", action: "status_move_ignored", detail: `${from} -> ${status}` });
+}
+
+const CATEGORIES = ["venue", "catering", "decor"] as const;
+
+// The plan: per category, the first quote in shortlist order whose vendor did not say unavailable.
+export function quotesToPay(event: Event, vendors: Vendor[]): VendorQuote[] {
+  const picked = new Map<string, VendorQuote>();
+  for (const item of event.shortlist) {
+    const v = vendors.find((x) => x.id === item.vendorId);
+    const q = event.quotes.find((x) => x.vendorId === item.vendorId);
+    if (v && q && q.extract.available !== false && !picked.has(v.category)) picked.set(v.category, q);
+  }
+  return CATEGORIES.flatMap((c) => picked.get(c) ?? []);
 }
 
 export async function sendText(event: Event, channel: Channel, to: string, body: string) {
@@ -96,7 +121,8 @@ export function makeLeadTools(ctx: LeadContext): BetaRunnableTool<any>[] { // es
         const s = event.shortlist.find((x) => x.vendorId === vendorId);
         if (!s || s.fit === "conflict") return refuse("call_vendor", "vendor not shortlisted or in conflict");
         if (event.quotes.some((q) => q.vendorId === vendorId)) return refuse("call_vendor", "quote already exists");
-        if (event.calls.some((c) => c.vendorId === vendorId && c.status === "placed")) return refuse("call_vendor", "call already placed");
+        if (event.calls.some((c) => c.status === "placed")) return refuse("call_vendor", "a call is already in progress");
+        if (event.status !== "confirmed" && event.status !== "calling") return refuse("call_vendor", "cannot call vendors while status is " + event.status);
         const vendor = await store.getVendor(vendorId);
         if (!vendor || !event.brief) return refuse("call_vendor", "vendor or brief missing");
         const script = await buildCallScript(vendor, event.brief, questions, ctx.audit);
@@ -118,11 +144,12 @@ export function makeLeadTools(ctx: LeadContext): BetaRunnableTool<any>[] { // es
       run: async ({ kind, summary }) => {
         if (ctx.ended) return refuse("request_approval", "this run already placed a call or requested approval");
         if (event.approvals.some((a) => a.status === "pending")) return refuse("request_approval", "an approval is already pending");
-        if (event.quotes.length < 3 || !event.brief) return refuse("request_approval", "fewer than 3 quotes");
-        const lines = (await Promise.all(event.quotes.map(async (q) => ({ vendor: await store.getVendor(q.vendorId), q: q.extract }))))
-          .filter((l): l is { vendor: Vendor; q: typeof l.q } => !!l.vendor);
+        const all = await store.listVendors();
+        const plan = quotesToPay(event, all);
+        if (plan.length < CATEGORIES.length || !event.brief) return refuse("request_approval", "need a quote for each of venue, catering, decor");
+        const lines = plan.map((q) => ({ vendor: all.find((v) => v.id === q.vendorId)!, q: q.extract }));
         const approval = createApproval(event, kind, summary, new Date());
-        await sendText(event, channel, event.hostPhone, summaryText(lines, budgetCheck(event.brief, event.quotes), approval.code, event.brief));
+        await sendText(event, channel, event.hostPhone, summaryText(lines, budgetCheck(event.brief, plan), approval.code, event.brief));
         setStatus(event, "awaiting_approval");
         await store.saveEvent(event);
         ctx.ended = true;
