@@ -45,3 +45,6 @@ data/store.json
 # spacetimedb build output and local-only config
 spacetimedb/spacetimedb/dist/
 spacetimedb/spacetime.local.json
+
+# browser automation output
+.playwright-mcp/
