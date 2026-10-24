@@ -1,4 +1,5 @@
 import type { Approval, ApprovalKind, Event } from "./types";
+import { isFromHost } from "@/integrations/phone";
 
 export const APPROVAL_TTL_MS = 30 * 60 * 1000;
 
@@ -21,10 +22,8 @@ export function parseReply(body: string): { verb: "YES" | "NO" | null; code: str
 
 export type ReplyOutcome = "approved" | "declined" | "expired" | "wrong_sender" | "no_code" | "unknown_code" | "already_answered";
 
-const digits = (s: string) => s.replace(/\D/g, "");
-
 export function applyReply(event: Event, from: string, body: string, now: Date): { outcome: ReplyOutcome; approval?: Approval } {
-  if (digits(from) !== digits(event.hostPhone)) return { outcome: "wrong_sender" };
+  if (!isFromHost(from, event.hostPhone)) return { outcome: "wrong_sender" };
   const { verb, code } = parseReply(body);
   if (!verb || !code) return { outcome: "no_code" };
   const approval = event.approvals.find((a) => a.code === code && a.status === "pending") ?? event.approvals.find((a) => a.code === code);

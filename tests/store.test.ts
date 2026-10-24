@@ -28,3 +28,16 @@ test("findEventByHostPhone matches digits only, most recent wins", async () => {
   assert.notEqual(a.id, b.id);
   assert.equal(await s.findEventByHostPhone("+19998887777"), null);
 });
+test("findEventByHostPhone matches a local-format number against the +1 form", async () => {
+  const e = await s.createEvent("(555) 123-4500");
+  await s.saveEvent(e);
+  assert.equal((await s.findEventByHostPhone("+15551234500"))?.id, e.id);
+});
+test("VENDOR_PHONE_<id> overrides the seed phone when the store loads", async () => {
+  process.env["VENDOR_PHONE_venue-casa-verde"] = "+15557770000";
+  try {
+    const s2 = fileStore(join(mkdtempSync(join(tmpdir(), "mela-")), "store.json"));
+    assert.equal((await s2.getVendor("venue-casa-verde"))?.phone, "+15557770000");
+    assert.equal((await s2.getVendor("decor-flor"))?.phone, "+15550000003");
+  } finally { delete process.env["VENDOR_PHONE_venue-casa-verde"]; }
+});

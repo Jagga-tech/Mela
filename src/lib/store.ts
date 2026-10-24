@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Event, Vendor, VendorCategory } from "@/lib/types";
+import { isFromHost } from "@/integrations/phone";
 
 export type Seed = { vendors: Vendor[];
   transcripts: { host_confirm: string; host_final: string; vendors: Record<string, string> };
@@ -20,10 +21,10 @@ export type Store = {
 };
 type Data = { events: Record<string, Event>; keys: string[] };
 
-const digits = (s: string) => s.replace(/\D/g, "");
-
 export function fileStore(path = process.env.MELA_STORE ?? "data/store.json"): Store {
   const seed: Seed = JSON.parse(readFileSync(join(process.cwd(), "data/seed.json"), "utf8"));
+  // VENDOR_PHONE_<vendorId> points a seed vendor at a real phone for the live demo
+  for (const v of seed.vendors) v.phone = process.env[`VENDOR_PHONE_${v.id}`] ?? v.phone;
   // ponytail: whole-file JSON store, SpacetimeDB replaces it
   const read = (): Data => existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : { events: {}, keys: [] };
   const write = (d: Data) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, JSON.stringify(d, null, 2)); };
@@ -44,7 +45,7 @@ export function fileStore(path = process.env.MELA_STORE ?? "data/store.json"): S
     async findEventByCallId(callId) { return events().find(e => e.calls.some(c => c.id === callId)) ?? null; },
     async findEventByHostPhone(phone) {
       // >= so ties go to the later-inserted event
-      return events().filter(e => digits(e.hostPhone) === digits(phone))
+      return events().filter(e => isFromHost(phone, e.hostPhone))
         .reduce<Event | null>((best, e) => !best || e.updatedAt >= best.updatedAt ? e : best, null);
     },
     async findEventByPendingCode(code) { return events().find(e => e.approvals.some(a => a.status === "pending" && a.code === code)) ?? null; },

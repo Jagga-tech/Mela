@@ -22,7 +22,7 @@ export function cartesiaCalls(_onCallEnded: OnCallEnded, store: Store): Pick<Cha
     },
     async callVendor(_eventId, vendorId, script) {
       const vendor = await store.getVendor(vendorId);
-      const to = process.env[`VENDOR_PHONE_${vendorId}`] ?? vendor?.phone;
+      const to = vendor?.phone; // VENDOR_PHONE_<id> override is applied when the store loads the seed
       if (!to) throw new Error(`no phone for vendor ${vendorId}`);
       const callId = randomUUID();
       await placeCall({ to, script, callId });

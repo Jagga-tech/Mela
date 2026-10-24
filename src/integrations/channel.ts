@@ -18,7 +18,12 @@ const imessageSink = async (to: string, body: string) => {
 };
 
 export function getChannel(onCallEnded: OnCallEnded, store: Store): Channel {
-  const text = process.env.MELA_TEXT === "imessage" ? imessageSink : consoleSink;
-  const calls = process.env.MELA_CALLS === "cartesia" ? cartesiaCalls(onCallEnded, store) : fakeChannel(onCallEnded, store.seed, text);
+  const { MELA_TEXT, MELA_CALLS } = process.env;
+  if (MELA_TEXT && !["console", "imessage"].includes(MELA_TEXT)) console.warn(`[channel] unknown MELA_TEXT=${MELA_TEXT}, using console`);
+  if (MELA_CALLS && !["fake", "cartesia"].includes(MELA_CALLS)) console.warn(`[channel] unknown MELA_CALLS=${MELA_CALLS}, using fake`);
+  const textName = MELA_TEXT === "imessage" ? "imessage" : "console", callsName = MELA_CALLS === "cartesia" ? "cartesia" : "fake";
+  console.log(`[channel] calls=${callsName} texts=${textName}`);
+  const text = textName === "imessage" ? imessageSink : consoleSink;
+  const calls = callsName === "cartesia" ? cartesiaCalls(onCallEnded, store) : fakeChannel(onCallEnded, store.seed, text);
   return { callHost: calls.callHost, callVendor: calls.callVendor, text };
 }

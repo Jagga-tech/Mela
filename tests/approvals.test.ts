@@ -61,3 +61,9 @@ test("applyReply prefers the pending approval over a stale one with the same cod
   assert.equal(r.approval, fresh);
   assert.equal(fresh.status, "approved");
 });
+
+test("applyReply matches the host across phone formats", () => {
+  const e = { ...mkEvent(), hostPhone: "+15551234567" };
+  const a = createApproval(e, "plan", "s", t0);
+  assert.equal(applyReply(e, "+1 (555) 123-4567", `YES ${a.code}`, later(1)).outcome, "approved");
+});
