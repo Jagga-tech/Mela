@@ -54,3 +54,8 @@ export function allDoneText(event: Event): string {
   const n = event.payments.filter((p) => p.status === "succeeded").length;
   return `All set. ${n} vendor${n === 1 ? "" : "s"} booked. Confirmations above. (Stripe test mode)`;
 }
+
+export const invoiceHeldText = (vendor: Vendor, explanation: string) => `Held ${vendor.name}'s invoice: ${explanation} A planner will follow up.`;
+export const balanceApprovalText = (vendor: Vendor, balanceCents: number, code: string) =>
+  `Invoice from ${vendor.name} matches the quote. Pay the remaining ${usd(balanceCents)}? Reply YES ${code} or NO ${code}.`;
+export const invoiceSettledText = (vendor: Vendor) => `Invoice from ${vendor.name} matches the quote. Nothing more to pay.`;

@@ -4,11 +4,12 @@ import { riskIsFresh } from "@/lib/rules";
 import type { Store } from "@/lib/store";
 import type { PayAdapter } from "@/integrations/pay";
 import { redact } from "@/agents/harness";
+import { openException } from "@/integrations/hyphenate";
 
-export type PayRefusal = "no_mandate" | "mandate_not_approved" | "mandate_expired" | "vendor_not_in_mandate" | "vendor_risk" | "over_cap" | "duplicate" | "amount_unknown";
+export type PayRefusal = "no_mandate" | "mandate_not_approved" | "mandate_expired" | "vendor_not_in_mandate" | "vendor_risk" | "finance_hold" | "over_cap" | "duplicate" | "amount_unknown";
 
 export async function payVendor(event: Event, store: Store, pay: PayAdapter, vendorId: string, amountCents: number | null, now: Date,
-  risk: VendorRisk | null):
+  risk: VendorRisk | null, kind: "deposit" | "balance" = "deposit"):
   Promise<{ ok: true; payment: Payment } | { ok: false; refusal: PayRefusal }> {
   const audit = (action: string, detail?: string) =>
     event.audit.push({ at: now.toISOString(), actor: "payments", action, detail });
@@ -19,13 +20,14 @@ export async function payVendor(event: Event, store: Store, pay: PayAdapter, ven
   if (now.getTime() > new Date(m.expiresAt).getTime()) return refuse("mandate_expired");
   if (!m.vendorIds.includes(vendorId)) return refuse("vendor_not_in_mandate");
   if (!riskIsFresh(risk, now) || risk.level !== "clear" || risk.vendorId !== vendorId) return refuse("vendor_risk");
+  if (openException(event, vendorId)) return refuse("finance_hold");
   if (amountCents === null) return refuse("amount_unknown");
   if (m.spentCents + amountCents > m.capCents) return refuse("over_cap");
-  const idempotencyKey = `${event.id}:pay:${vendorId}`;
+  const idempotencyKey = `${event.id}:pay:${vendorId}${kind === "balance" ? ":balance" : ""}`;
   if (!(await store.claimIdempotencyKey(idempotencyKey))) return refuse("duplicate");
 
   const payment: Payment = { id: randomUUID(), eventId: event.id, mandateId: m.id, vendorId, amountCents, idempotencyKey,
-    status: "pending", createdAt: now.toISOString() };
+    status: "pending", createdAt: now.toISOString(), kind };
   event.payments.push(payment);
   await store.saveEvent(event);
   try {

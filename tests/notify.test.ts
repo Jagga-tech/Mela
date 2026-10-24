@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { allDoneText, paymentText, summaryText, vendorQuoteText, vendorConfirmText } from "../src/lib/notify";
+import { allDoneText, balanceApprovalText, invoiceHeldText, invoiceSettledText, paymentText, summaryText, vendorQuoteText, vendorConfirmText } from "../src/lib/notify";
 import { budgetCheck } from "../src/lib/rules";
 import type { Event, EventBrief, Payment, QuoteExtract, Vendor, VendorQuote } from "../src/lib/types";
 
@@ -62,4 +62,11 @@ test("summary says what is charged now", () => {
 test("allDoneText counts bookings and says Stripe test mode", () => {
   const p = { status: "succeeded" } as Payment;
   assert.equal(allDoneText({ payments: [p, p] } as unknown as Event), "All set. 2 vendors booked. Confirmations above. (Stripe test mode)");
+});
+
+test("invoice templates", () => {
+  const cv = v("a", "Casa Verde");
+  assert.equal(invoiceHeldText(cv, "Total is $200 over the PO."), "Held Casa Verde's invoice: Total is $200 over the PO. A planner will follow up.");
+  assert.equal(balanceApprovalText(cv, 130000, "4821"), "Invoice from Casa Verde matches the quote. Pay the remaining $1,300? Reply YES 4821 or NO 4821.");
+  assert.equal(invoiceSettledText(cv), "Invoice from Casa Verde matches the quote. Nothing more to pay.");
 });

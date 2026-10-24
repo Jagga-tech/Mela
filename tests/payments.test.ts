@@ -52,3 +52,20 @@ test("a clear result for another vendor does not count", async () => {
   const { e, v } = await fresh();
   assert.deepEqual(await payVendor(e, s, testPay(), v, 100, now, risk({ vendorId: "decor-flor" })), { ok: false, refusal: "vendor_risk" });
 });
+
+test("open finance exception → finance_hold", async () => {
+  const { e, v } = await fresh();
+  e.financeExceptions.push({ id: "x", eventId: e.id, vendorId: v, kind: "mismatch", lines: [], explanation: "", approver: "host", status: "open", createdAt: "" });
+  assert.deepEqual(await payVendor(e, s, testPay(), v, 100, now, clear), { ok: false, refusal: "finance_hold" });
+  e.financeExceptions[0].status = "cleared";
+  assert.ok((await payVendor(e, s, testPay(), v, 100, now, clear)).ok);
+});
+test("balance key differs from deposit key; both succeed", async () => {
+  const { e, v } = await fresh();
+  const d = await payVendor(e, s, testPay(), v, 50000, now, clear);
+  const b = await payVendor(e, s, testPay(), v, 130000, now, clear, "balance");
+  assert.ok(d.ok && b.ok); if (!d.ok || !b.ok) return;
+  assert.equal(d.payment.idempotencyKey, `${e.id}:pay:${v}`); assert.equal(d.payment.kind, "deposit");
+  assert.equal(b.payment.idempotencyKey, `${e.id}:pay:${v}:balance`); assert.equal(b.payment.kind, "balance");
+  assert.deepEqual(await payVendor(e, s, testPay(), v, 130000, now, clear, "balance"), { ok: false, refusal: "duplicate" });
+});

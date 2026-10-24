@@ -5,7 +5,7 @@ import type { Event } from "../src/lib/types";
 
 const mkEvent = (): Event => ({ id: "e1", hostPhone: "+1 (555) 010-0000", status: "draft", brief: null, missing: [],
   shortlist: [], calls: [], quotes: [], approvals: [], mandate: null, payments: [], messages: [], humanTasks: [],
-  research: [], audit: [], createdAt: "", updatedAt: "" });
+  research: [], audit: [], purchaseOrders: [], invoices: [], financeExceptions: [], createdAt: "", updatedAt: "" });
 const t0 = new Date("2026-10-24T12:00:00Z");
 const later = (min: number) => new Date(t0.getTime() + min * 60000);
 

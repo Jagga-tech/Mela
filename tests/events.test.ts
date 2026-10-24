@@ -121,3 +121,96 @@ test("allPaid only when every planned payment succeeded", async () => {
   assert.equal(allPaid([ok, ok], 3), false);
   assert.equal(allPaid([], 0), false);
 });
+
+// receiveInvoice texts the host; keep the real iMessage sink out of tests
+const invoiceSetup = async (phone: string, depositPaid: number) => {
+  const { store, channel, createPurchaseOrders } = { ...(await load()), ...(await import("@/integrations/hyphenate")) };
+  channel.text = async () => {};
+  const e = await store.createEvent(phone);
+  e.shortlist = [{ vendorId: "venue-casa-verde", fit: "fit", conflicts: [], unknowns: [], reason: "" }];
+  e.quotes = [{ vendorId: "venue-casa-verde", callId: "c1", createdAt: "",
+    extract: { available: true, priceUsd: 1800, depositUsd: 500, terms: [], evidence: [], openQuestions: [] } }];
+  createPurchaseOrders(e, e.quotes, new Date());
+  e.payments.push({ id: "p1", eventId: e.id, mandateId: e.mandate!.id, vendorId: "venue-casa-verde", amountCents: depositPaid,
+    idempotencyKey: `${e.id}:pay:venue-casa-verde`, status: "succeeded", createdAt: "", kind: "deposit" });
+  e.status = "paid";
+  await store.saveEvent(e);
+  return e;
+};
+const stub = async () => "stub";
+const lines = (unitPriceUsd: number) => [{ description: "Venue", qty: 1, unitPriceUsd }];
+
+test("receiveInvoice clean with deposit paid → PO invoiced, payment approval, host asked to pay the rest", async () => {
+  const { receiveInvoice, store } = await load();
+  const e = await invoiceSetup("+15550008881", 50000);
+  const r = await receiveInvoice(e.id, { vendorId: "venue-casa-verde", lineItems: lines(1800), terms: "net 15" }, stub);
+  assert.equal(r.exception, null); assert.equal(r.approvalRequested, true); assert.equal(r.invoice.totalCents, 180000);
+  const after = (await store.getEvent(e.id))!;
+  assert.equal(after.purchaseOrders[0].status, "invoiced");
+  const pending = after.approvals.filter((a) => a.kind === "payment" && a.status === "pending");
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].summary, `venue-casa-verde:${after.purchaseOrders[0].id}`);
+  const texts = after.messages.filter((m) => m.to === after.hostPhone);
+  assert.equal(texts.length, 1); assert.ok(texts[0].body.includes("Pay the remaining $1,300"));
+  assert.ok(after.audit.some((a) => a.action === "invoice_matched"));
+  assert.equal(after.invoices.length, 1);
+});
+
+test("receiveInvoice clean when the deposit covered the full price → no approval, nothing more to pay", async () => {
+  const { receiveInvoice, store } = await load();
+  const e = await invoiceSetup("+15550008882", 180000);
+  const r = await receiveInvoice(e.id, { vendorId: "venue-casa-verde", lineItems: lines(1800), terms: "net 15" }, stub);
+  assert.equal(r.approvalRequested, false);
+  const after = (await store.getEvent(e.id))!;
+  assert.equal(after.approvals.length, 0);
+  assert.ok(after.messages.at(-1)!.body.includes("Nothing more to pay"));
+});
+
+test("receiveInvoice mismatch → finance exception, planner task, held text", async () => {
+  const { receiveInvoice, store } = await load();
+  const e = await invoiceSetup("+15550008883", 50000);
+  const r = await receiveInvoice(e.id, { vendorId: "venue-casa-verde", lineItems: lines(2000), terms: "net 15" }, stub);
+  assert.equal(r.approvalRequested, false); assert.equal(r.exception?.kind, "mismatch");
+  const after = (await store.getEvent(e.id))!;
+  assert.equal(after.financeExceptions.length, 1);
+  assert.equal(after.financeExceptions[0].explanation, "stub"); assert.equal(after.financeExceptions[0].approver, "host");
+  assert.equal(after.humanTasks.filter((t) => t.to === "planner").length, 1);
+  assert.ok(after.messages.at(-1)!.body.includes("Held"));
+  assert.equal(after.purchaseOrders[0].status, "open");
+  assert.ok(after.audit.some((a) => a.action === "invoice_held"));
+});
+
+test("receiveInvoice payment_change → planner approver; no PO → no_po", async () => {
+  const { receiveInvoice } = await load();
+  const e = await invoiceSetup("+15550008884", 50000);
+  const r = await receiveInvoice(e.id, { vendorId: "venue-casa-verde", lineItems: lines(1800), terms: "net 15", paymentInstructions: "+15559990000" }, stub);
+  assert.equal(r.exception?.kind, "payment_change"); assert.equal(r.exception?.approver, "planner");
+  const n = await receiveInvoice(e.id, { vendorId: "decor-flor", lineItems: lines(900), terms: "" }, stub);
+  assert.equal(n.exception?.kind, "no_po"); assert.equal(n.exception?.explanation, "No purchase order for this vendor");
+});
+
+test("a re-sent invoice with the same total is a duplicate", async () => {
+  const { receiveInvoice } = await load();
+  const e = await invoiceSetup("+15550008885", 50000);
+  await receiveInvoice(e.id, { vendorId: "venue-casa-verde", lineItems: lines(1800), terms: "net 15" }, stub);
+  const r = await receiveInvoice(e.id, { vendorId: "venue-casa-verde", lineItems: lines(1800), terms: "net 15" }, stub);
+  assert.equal(r.exception?.kind, "duplicate");
+});
+
+test("YES to a balance approval keeps status and runs the balance through the payment gates", async () => {
+  const { receiveInvoice, onInboundText, store } = await load();
+  process.env.STRIPE_SECRET_KEY ??= "sk_test_x"; // the vendor check refuses before Stripe is called
+  delete process.env.CRS_USERNAME; // no network: CRS unconfigured → "review"
+  const e = await invoiceSetup("+15550008886", 50000);
+  await receiveInvoice(e.id, { vendorId: "venue-casa-verde", lineItems: lines(1800), terms: "net 15" }, stub);
+  const code = (await store.getEvent(e.id))!.approvals[0].code;
+  assert.equal(await onInboundText(e.hostPhone, "YES " + code), "approved");
+  let after = (await store.getEvent(e.id))!;
+  for (let i = 0; i < 50 && !after.humanTasks.some((t) => t.question.startsWith("Balance")); i++) {
+    await new Promise((r) => setTimeout(r, 20)); after = (await store.getEvent(e.id))!;
+  }
+  assert.equal(after.status, "paid");
+  // no CRS credentials in tests → vendor check is "review" → the balance is refused, never paid blind
+  assert.ok(after.humanTasks.some((t) => t.question.startsWith("Balance to Casa Verde not paid (vendor check not clear)")));
+  assert.equal(after.payments.length, 1);
+});

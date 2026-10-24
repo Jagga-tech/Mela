@@ -7,15 +7,18 @@ import { DISCLOSURE } from "@/agents/outreach";
 import { isPastApproval, leadSpec, makeLeadTools, quotesToPay, sendText, setStatus, type LeadContext } from "@/agents/lead";
 export { advanceStatus, quotesToPay } from "@/agents/lead";
 import { store } from "@/lib/store";
-import { applyReply, parseReply, type ReplyOutcome } from "@/lib/approvals";
-import { amountToPayCents } from "@/lib/rules";
+import { applyReply, createApproval, parseReply, type ReplyOutcome } from "@/lib/approvals";
+import { amountToPayCents, toCents } from "@/lib/rules";
 import { ensureVendorRisk } from "@/lib/vendorRisk";
 import { payVendor, type PayRefusal } from "@/lib/payments";
-import { allDoneText, declinedText, expiredText, needsAttentionText, paymentText, vendorConfirmText, vendorQuoteText } from "@/lib/notify";
+import { allDoneText, balanceApprovalText, declinedText, expiredText, invoiceHeldText, invoiceSettledText, needsAttentionText, paymentText,
+  vendorConfirmText, vendorQuoteText } from "@/lib/notify";
 import { getChannel } from "@/integrations/channel";
 import { getPayAdapter } from "@/integrations/pay";
+import { balanceCents, createPurchaseOrders, matchInvoice } from "@/integrations/hyphenate";
+import { explainDiscrepancies } from "@/agents/finance";
 import { normalizePhone } from "@/integrations/phone";
-import type { CallKind, CallScript, Event, EventBrief, Payment } from "@/lib/types";
+import type { CallKind, CallScript, Event, EventBrief, FinanceException, Invoice, LineItem, Payment } from "@/lib/types";
 
 export const channel = getChannel(onCallEnded, store);
 
@@ -147,7 +150,7 @@ export async function onCallEnded(callId: string, transcript: string): Promise<v
 
 const REFUSAL_WORDS: Record<PayRefusal, string> = { over_cap: "over the spending limit", amount_unknown: "price unknown",
   duplicate: "already paid", no_mandate: "payment setup problem", mandate_not_approved: "payment setup problem",
-  mandate_expired: "payment setup problem", vendor_not_in_mandate: "payment setup problem", vendor_risk: "vendor check not clear" };
+  mandate_expired: "payment setup problem", vendor_not_in_mandate: "payment setup problem", vendor_risk: "vendor check not clear", finance_hold: "invoice on hold" };
 
 export const allPaid = (payments: Payment[], planned: number) =>
   planned > 0 && payments.filter((p) => p.status === "succeeded").length === planned;
@@ -187,7 +190,81 @@ async function paymentJob(eventId: string) {
   try {
     const event = await load(eventId);
     if (event.status !== "approved") { audit(event, "payments_skipped_status", event.status); await store.saveEvent(event); return; }
+    createPurchaseOrders(event, quotesToPay(event, await store.listVendors()), new Date());
     await runPayments(event);
+  } finally {
+    unlock(eventId);
+  }
+}
+
+// The balance after a clean invoice; the host approved it with a "payment" approval whose summary is `${vendorId}:${poId}`.
+async function balanceJob(eventId: string, summary: string) {
+  await waitLock(eventId);
+  try {
+    const event = await load(eventId);
+    const po = event.purchaseOrders.find((p) => p.id === summary.split(":").at(-1));
+    const vendor = po && await store.getVendor(po.vendorId);
+    if (!po || !vendor) { audit(event, "balance_po_missing", summary); await store.saveEvent(event); return; }
+    const due = balanceCents(po, event);
+    if (!due) {
+      audit(event, "balance_nothing_due", po.id);
+      await sendText(event, channel, event.hostPhone, invoiceSettledText(vendor));
+    } else {
+      const now = new Date();
+      const risk = await ensureVendorRisk(event, vendor, now);
+      const r = await payVendor(event, store, getPayAdapter(), vendor.id, due, now, risk, "balance");
+      if (!r.ok) {
+        planner(event, `Balance to ${vendor.name} not paid (${REFUSAL_WORDS[r.refusal]})${r.refusal === "vendor_risk" ? ": " + risk.reasons.join("; ") : ""}`, "balance payment");
+        await sendText(event, channel, event.hostPhone, `Payment to ${vendor.name} was not made (${REFUSAL_WORDS[r.refusal]}).`);
+      } else await sendText(event, channel, event.hostPhone, paymentText(vendor, r.payment, false));
+    }
+    await store.saveEvent(event);
+  } finally {
+    unlock(eventId);
+  }
+}
+
+export type InvoiceInput = { vendorId: string; lineItems: LineItem[]; terms: string; paymentInstructions?: string };
+
+export async function receiveInvoice(eventId: string, input: InvoiceInput, explain = explainDiscrepancies):
+  Promise<{ invoice: Invoice; exception: FinanceException | null; approvalRequested: boolean }> {
+  await waitLock(eventId);
+  try {
+    const event = await load(eventId);
+    const vendor = await store.getVendor(input.vendorId);
+    if (!vendor) throw new Error("vendor not found: " + input.vendorId);
+    const now = new Date();
+    // an invoiced (not closed) PO still matches, so a re-sent invoice is caught as a duplicate instead of "no PO"
+    const po = event.purchaseOrders.findLast((p) => p.vendorId === vendor.id && p.status !== "closed");
+    const invoice: Invoice = { id: randomUUID(), eventId, vendorId: vendor.id, poId: po?.id ?? null, lineItems: input.lineItems,
+      totalCents: input.lineItems.reduce((s, l) => s + toCents(l.qty * l.unitPriceUsd)!, 0), terms: input.terms,
+      paymentInstructions: input.paymentInstructions, receivedAt: now.toISOString() };
+    const prior = [...event.invoices];
+    event.invoices.push(invoice);
+    audit(event, "invoice_received", `${vendor.id} ${invoice.totalCents}`);
+    const m = po ? matchInvoice(po, invoice, vendor, prior, now) : { kind: "no_po" as const, lines: ["No purchase order for this vendor"] };
+    let exception: FinanceException | null = null, approvalRequested = false;
+    if (po && m.kind === null) {
+      po.status = "invoiced";
+      const due = balanceCents(po, event);
+      audit(event, "invoice_matched", `${vendor.id} balance ${due}`);
+      if (due > 0) {
+        const a = createApproval(event, "payment", `${vendor.id}:${po.id}`, now);
+        approvalRequested = true;
+        await sendText(event, channel, event.hostPhone, balanceApprovalText(vendor, due, a.code));
+      } else await sendText(event, channel, event.hostPhone, invoiceSettledText(vendor));
+    } else {
+      const kind = m.kind!;
+      const explanation = po ? await explain(po, invoice, m.lines, event.audit) : m.lines[0];
+      exception = { id: randomUUID(), eventId, vendorId: vendor.id, invoiceId: invoice.id, kind, lines: m.lines, explanation,
+        approver: kind === "payment_change" || kind === "no_po" ? "planner" : "host", status: "open", createdAt: now.toISOString() };
+      event.financeExceptions.push(exception);
+      audit(event, "invoice_held", `${vendor.id} ${kind}`);
+      planner(event, `Invoice from ${vendor.name} held (${kind}): ${m.lines.join("; ")}`, "invoice match");
+      await sendText(event, channel, event.hostPhone, invoiceHeldText(vendor, explanation));
+    }
+    await store.saveEvent(event);
+    return { invoice, exception, approvalRequested };
   } finally {
     unlock(eventId);
   }
@@ -202,13 +279,21 @@ export async function onInboundText(from: string, body: string, rowId?: number):
   // a non-host sender is found by the code they quote, so they get wrong_sender instead of starting a new event
   const found = (await store.findEventByHostPhone(from)) ?? (code ? await store.findEventByPendingCode(code) : null);
   if (!found) { console.log(`[events] new_request from ${from} ignored`); return "new_request"; }
-  let next: string | null = null, pay = false;
+  let next: string | null = null, pay = false, balance: string | null = null;
   await waitLock(found.id);
   try {
     const event = await load(found.id);
-    const { outcome } = applyReply(event, from, body, new Date());
+    const { outcome, approval } = applyReply(event, from, body, new Date());
     audit(event, "inbound_reply", outcome);
-    if (outcome === "approved") {
+    if (approval?.kind === "payment" && (outcome === "approved" || outcome === "declined")) {
+      // a balance approval: the event stays paid; only that one payment is affected
+      if (outcome === "approved") balance = approval.summary;
+      else {
+        planner(event, `Host declined the balance (${approval.summary})`, "balance approval");
+        await sendText(event, channel, event.hostPhone, "Got it, the balance is not paid. A planner will follow up.");
+      }
+    }
+    else if (outcome === "approved") {
       if (event.status === "awaiting_approval") { setStatus(event, "approved"); pay = true; }
       else audit(event, "approval_ignored_status", event.status);
     }
@@ -221,6 +306,7 @@ export async function onInboundText(from: string, body: string, rowId?: number):
     unlock(found.id);
     // follow-up work is detached so the webhook answers within the locked part (the poller would time out and replay)
     if (pay) void paymentJob(found.id).catch(console.error);
+    if (balance) void balanceJob(found.id, balance).catch(console.error);
     if (next) void startLeadRun(found.id, next).catch(console.error);
   }
 }

@@ -35,13 +35,19 @@ export function fileStore(path = process.env.MELA_STORE ?? "data/store.json"): S
     async createEvent(hostPhone) {
       const now = new Date().toISOString(), id = randomUUID();
       const e: Event = { id, hostPhone, status: "draft", brief: null, missing: [], shortlist: [], calls: [], quotes: [],
-        approvals: [], payments: [], messages: [], humanTasks: [], research: [], audit: [], createdAt: now, updatedAt: now,
+        approvals: [], payments: [], messages: [], humanTasks: [], research: [], audit: [], purchaseOrders: [], invoices: [], financeExceptions: [], createdAt: now, updatedAt: now,
         mandate: { id: randomUUID(), eventId: id, vendorIds: seed.vendors.map(v => v.id), capCents: seed.mandate.capCents,
           spentCents: 0, expiresAt: seed.mandate.expiresAt, status: "approved" } };
       const d = read(); d.events[id] = e; write(d);
       return e;
     },
-    async getEvent(id) { return read().events[id] ?? null; },
+    async getEvent(id) {
+      const e = read().events[id];
+      if (!e) return null;
+      // events saved before the finance records existed
+      e.purchaseOrders ??= []; e.invoices ??= []; e.financeExceptions ??= [];
+      return e;
+    },
     async saveEvent(e) { const d = read(); e.updatedAt = new Date().toISOString(); d.events[e.id] = e; write(d); },
     async findEventByCallId(callId) { return events().find(e => e.calls.some(c => c.id === callId)) ?? null; },
     async findEventByHostPhone(phone) {
