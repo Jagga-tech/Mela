@@ -1,0 +1,70 @@
+{
+  "_note": "SIMULATED. Mela Events is a fictional business; vendors are demo fixtures. Amounts are in USD cents to avoid float error.",
+  "event": {
+    "id": "EVT-0417",
+    "occasion": "quinceañera",
+    "host": { "id": "usr_maya", "name": "Maya", "role": "host" },
+    "city": "Oakland",
+    "guests": 80,
+    "budgetCapCents": 1400000,
+    "budgetScope": "all_in"
+  },
+  "policies": [
+    { "id": "P-1", "version": 1, "rule": "Hold any invoice line that is not in the approved quote.", "maxAutoCents": 0, "maxAutoPct": 0, "approvedBy": "usr_rosa" },
+    { "id": "P-1", "version": 2, "rule": "Unquoted lines <= $75 AND <= 5% of the commitment are approved with notice to the host; everything else is held.", "maxAutoCents": 7500, "maxAutoPct": 5, "proposedBy": "agent_mela_ap", "approvedBy": "usr_rosa", "approvedAt": "2026-10-24T11:34:27-07:00" }
+  ],
+  "quotes": [
+    {
+      "id": "Q-118", "vendorId": "V-221", "vendorName": "Casa Verde Catering", "eventId": "EVT-0417",
+      "lines": [
+        { "id": "L1", "label": "Family-style vegetarian dinner", "qty": 80, "unitCents": 4500, "totalCents": 360000 },
+        { "id": "L2", "label": "Service staff (4 servers x 5 h)", "qty": 20, "unitCents": 3000, "totalCents": 60000 }
+      ],
+      "totalCents": 420000,
+      "approvedBy": "usr_maya", "approvedAt": "2026-10-24T11:00:00-07:00"
+    },
+    {
+      "id": "Q-117", "vendorId": "V-230", "vendorName": "Petal & Stem Florals",
+      "lines": [
+        { "id": "L1", "label": "Centerpieces", "qty": 10, "unitCents": 9000, "totalCents": 90000 },
+        { "id": "L2", "label": "Arch florals", "qty": 1, "unitCents": 30000, "totalCents": 30000 }
+      ],
+      "totalCents": 120000, "approvedBy": "usr_maya"
+    },
+    {
+      "id": "Q-120", "vendorId": "V-230", "vendorName": "Petal & Stem Florals",
+      "lines": [ { "id": "L1", "label": "Ceremony florals", "qty": 1, "unitCents": 180000, "totalCents": 180000 } ],
+      "totalCents": 180000, "approvedBy": "usr_maya"
+    }
+  ],
+  "invoices": [
+    {
+      "id": "INV-2291", "quoteId": "Q-118", "commitmentId": "C-031", "receivedAt": "2026-10-24T11:02:58-07:00",
+      "lines": [
+        { "id": "L1", "label": "Family-style vegetarian dinner", "totalCents": 360000, "quoteLineId": "L1" },
+        { "id": "L2", "label": "Service staff", "totalCents": 60000, "quoteLineId": "L2" },
+        { "id": "L3", "label": "Setup & breakdown fee", "totalCents": 35000 }
+      ],
+      "totalCents": 455000,
+      "expected": { "v1": "held", "v2": "held", "failingLines": ["L3"], "deltaCents": 35000 }
+    },
+    {
+      "id": "INV-2290", "quoteId": "Q-117",
+      "lines": [
+        { "id": "L1", "label": "Centerpieces", "totalCents": 90000, "quoteLineId": "L1" },
+        { "id": "L2", "label": "Arch florals", "totalCents": 30000, "quoteLineId": "L2" }
+      ],
+      "totalCents": 120000,
+      "expected": { "v1": "matched", "v2": "matched", "failingLines": [], "deltaCents": 0 }
+    },
+    {
+      "id": "INV-2304", "quoteId": "Q-120",
+      "lines": [
+        { "id": "L1", "label": "Ceremony florals", "totalCents": 180000, "quoteLineId": "L1" },
+        { "id": "L2", "label": "Delivery", "totalCents": 6000 }
+      ],
+      "totalCents": 186000,
+      "expected": { "v1": "held", "v2": "auto_approved_with_notice", "failingLines": ["L2"], "deltaCents": 6000 }
+    }
+  ]
+}

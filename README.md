@@ -1,3 +1,13 @@
+# Mela
+
+Voice-first, AI-assisted event planning (Cal Hacks 13.0). The web app lives in `src/mela/` (UI, contracts, rules, adapters); the agent backend lives in `src/agents`, `src/lib`, `src/integrations`.
+
+- Frontend integration, endpoints, demo vs live: [`docs/frontend-integration.md`](docs/frontend-integration.md)
+- Design handoff (Figma map): [`docs/design-handoff.md`](docs/design-handoff.md)
+- `npm run dev` → demo mode, no keys needed · `npm test`
+
+---
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

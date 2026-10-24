@@ -1,26 +1,125 @@
 @import "tailwindcss";
 
+/* Mela Semantic tokens — values from Figma collection "Mela Semantic" (file vCZexQrSHgrVtHctQ6g3S6).
+   Web syntax var(--mela-<group>-<name>) as in docs/design-handoff.md. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --mela-bg-app: #f6f1e9;
+  --mela-bg-surface: #fffcf7;
+  --mela-bg-subtle: #eee6da;
+  --mela-bg-night: #1b1220;
+  --mela-border-default: #e4dacb;
+  --mela-fg-default: #241826;
+  --mela-fg-muted: #5e5162;
+  --mela-fg-subtle: #6c6371;
+  --mela-action-primary: #4b2e5c;
+  --mela-action-primary-hover: #3c2349;
+  --mela-action-primary-soft: #efe6f2;
+  --mela-fg-on-action: #ffffff;
+  --mela-research-fg: #2f4f6b;
+  --mela-research-bg: #e3ebf2;
+  --mela-status-verified-fg: #2f5d3a;
+  --mela-status-verified-bg: #e2eedf;
+  --mela-status-held-fg: #9a3f17;
+  --mela-status-held-bg: #f8e3d6;
+  --mela-status-warning-fg: #b23a30;
+  --mela-status-warning-bg: #fae1dc;
+  --mela-status-simulated-fg: #4a5563;
+  --mela-status-simulated-bg: #e6e8ec;
+  --mela-status-estimate-fg: #6f5310;
+  --mela-status-estimate-bg: #f5ead0;
+  --mela-status-unknown-fg: #6b636f;
+  --mela-status-unknown-bg: #ece7ef;
+  --mela-orb-body: #9b7fd1;
+  --mela-orb-deep: #7c5fb8;
+  --mela-orb-glow: #b9a3e6;
+  --mela-ember: #c2571f;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-app: var(--mela-bg-app);
+  --color-surface: var(--mela-bg-surface);
+  --color-subtle: var(--mela-bg-subtle);
+  --color-night: var(--mela-bg-night);
+  --color-line: var(--mela-border-default);
+  --color-fg: var(--mela-fg-default);
+  --color-muted: var(--mela-fg-muted);
+  --color-faint: var(--mela-fg-subtle);
+  --color-primary: var(--mela-action-primary);
+  --color-primary-hover: var(--mela-action-primary-hover);
+  --color-primary-soft: var(--mela-action-primary-soft);
+  --color-research: var(--mela-research-fg);
+  --color-research-soft: var(--mela-research-bg);
+  --color-ok: var(--mela-status-verified-fg);
+  --color-ok-soft: var(--mela-status-verified-bg);
+  --color-held: var(--mela-status-held-fg);
+  --color-held-soft: var(--mela-status-held-bg);
+  --color-warn: var(--mela-status-warning-fg);
+  --color-warn-soft: var(--mela-status-warning-bg);
+  --color-sim: var(--mela-status-simulated-fg);
+  --color-sim-soft: var(--mela-status-simulated-bg);
+  --color-est: var(--mela-status-estimate-fg);
+  --color-est-soft: var(--mela-status-estimate-bg);
+  --color-unk: var(--mela-status-unknown-fg);
+  --color-unk-soft: var(--mela-status-unknown-bg);
+  --color-orb: var(--mela-orb-body);
+  --font-serif: var(--font-instrument-serif), Georgia, serif;
+  --font-sans: var(--font-instrument-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --ease-mela: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+@layer base {
+html { color-scheme: light; }
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--mela-bg-app);
+  color: var(--mela-fg-default);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Visible focus everywhere; never removed. */
+:where(a, button, input, textarea, select, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--mela-action-primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.on-night :where(a, button, input, textarea, [tabindex]):focus-visible { outline-color: #d9c8ff; }
+
+}
+
+.label-mono { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mela-fg-subtle); }
+
+/* Motion spec (Figma 02 · DESIGN LANGUAGE): word→token 320ms, sheets 240ms, handoff 600ms */
+@keyframes mela-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes mela-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mela-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); } }
+@keyframes mela-ring { 0% { transform: scale(0.92); opacity: 0.7; } 100% { transform: scale(1.35); opacity: 0; } }
+@keyframes mela-spin { to { transform: rotate(360deg); } }
+@keyframes mela-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.1); } }
+@keyframes mela-wave { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+@keyframes mela-shimmer { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+@keyframes mela-emphasis { 0% { background: var(--mela-bg-surface); } 100% { background: var(--mela-status-warning-bg); } }
+
+.anim-rise { animation: mela-rise 320ms var(--ease-mela) both; }
+.anim-fade { animation: mela-fade 240ms ease-out both; }
+.anim-handoff { animation: mela-fade 600ms ease-out both; }
+.anim-emphasis { animation: mela-emphasis 400ms ease-out both; }
+.skeleton {
+  background: linear-gradient(90deg, var(--mela-bg-subtle) 0%, #f6efe4 50%, var(--mela-bg-subtle) 100%);
+  background-size: 200% 100%;
+  animation: mela-shimmer 1.6s linear infinite;
+}
+
+dialog::backdrop { background: rgb(36 24 38 / 0.42); }
+dialog[open] { animation: mela-rise 240ms var(--ease-mela) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 150ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 150ms !important;
+  }
+  .anim-rise, dialog[open] { animation-name: mela-fade !important; }
+  .orb-motion, .orb-motion * { animation: none !important; }
+  .skeleton { animation: none !important; }
 }
