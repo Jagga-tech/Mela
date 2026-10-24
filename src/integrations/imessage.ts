@@ -41,6 +41,12 @@ export async function pollReplies(sinceRowId: number): Promise<Reply[]> {
     .filter((r) => r.text);
 }
 
+// Highest Messages ROWID right now, so a fresh relay starts from "now" instead of replaying the whole history.
+export async function latestRowId(): Promise<number> {
+  const { stdout } = await run("sqlite3", ["-readonly", CHAT_DB, "SELECT COALESCE(MAX(ROWID), 0) FROM message"], { timeout: 10_000 });
+  return Number(stdout.trim()) || 0;
+}
+
 // Newer macOS leaves `text` empty and stores the message in attributedBody (an Apple typedstream).
 // The string sits after "NSString": 5 header bytes, a length (1 byte, or 0x81 + 2 bytes little-endian), then UTF-8.
 function decodeBody(hex: string | null): string | null {
