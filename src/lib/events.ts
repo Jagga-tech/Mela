@@ -11,14 +11,14 @@ import { applyReply, createApproval, parseReply, type ReplyOutcome } from "@/lib
 import { amountToPayCents, toCents } from "@/lib/rules";
 import { ensureVendorRisk } from "@/lib/vendorRisk";
 import { payVendor, type PayRefusal } from "@/lib/payments";
-import { allDoneText, balanceApprovalText, declinedText, expiredText, invoiceHeldText, invoiceSettledText, needsAttentionText, paymentText,
+import { allDoneText, balanceApprovalText, balanceDeclinedText, balanceHeldText, balancePaidText, declinedText, expiredText, invoiceHeldText, invoiceSettledText, needsAttentionText, paymentText,
   vendorConfirmText, vendorQuoteText } from "@/lib/notify";
 import { getChannel } from "@/integrations/channel";
 import { getPayAdapter } from "@/integrations/pay";
-import { balanceCents, createPurchaseOrders, matchInvoice } from "@/integrations/hyphenate";
+import { balanceCents, createPurchaseOrders, hasUnreconciledPayment, matchInvoice } from "@/integrations/hyphenate";
 import { explainDiscrepancies } from "@/agents/finance";
 import { normalizePhone } from "@/integrations/phone";
-import type { CallKind, CallScript, Event, EventBrief, FinanceException, Invoice, LineItem, Payment } from "@/lib/types";
+import type { CallKind, CallScript, Event, EventBrief, FinanceException, Invoice, LineItem, Payment, Vendor } from "@/lib/types";
 
 export const channel = getChannel(onCallEnded, store);
 
@@ -197,6 +197,12 @@ async function paymentJob(eventId: string) {
   }
 }
 
+async function holdBalance(event: Event, vendor: Vendor) {
+  audit(event, "balance_blocked_unreconciled", vendor.id);
+  planner(event, `Reconcile ${vendor.name} deposit before paying the balance`, "balance payment");
+  await sendText(event, channel, event.hostPhone, balanceHeldText(vendor));
+}
+
 // The balance after a clean invoice; the host approved it with a "payment" approval whose summary is `${vendorId}:${poId}`.
 async function balanceJob(eventId: string, summary: string) {
   await waitLock(eventId);
@@ -206,7 +212,8 @@ async function balanceJob(eventId: string, summary: string) {
     const vendor = po && await store.getVendor(po.vendorId);
     if (!po || !vendor) { audit(event, "balance_po_missing", summary); await store.saveEvent(event); return; }
     const due = balanceCents(po, event);
-    if (!due) {
+    if (hasUnreconciledPayment(event, vendor.id)) await holdBalance(event, vendor);
+    else if (!due) {
       audit(event, "balance_nothing_due", po.id);
       await sendText(event, channel, event.hostPhone, invoiceSettledText(vendor));
     } else {
@@ -216,13 +223,21 @@ async function balanceJob(eventId: string, summary: string) {
       if (!r.ok) {
         planner(event, `Balance to ${vendor.name} not paid (${REFUSAL_WORDS[r.refusal]})${r.refusal === "vendor_risk" ? ": " + risk.reasons.join("; ") : ""}`, "balance payment");
         await sendText(event, channel, event.hostPhone, `Payment to ${vendor.name} was not made (${REFUSAL_WORDS[r.refusal]}).`);
-      } else await sendText(event, channel, event.hostPhone, paymentText(vendor, r.payment, false));
+      } else if (r.payment.status === "succeeded") {
+        po.status = "closed";
+        await sendText(event, channel, event.hostPhone, balancePaidText(vendor, r.payment));
+      } else {
+        planner(event, "Some payments did not complete; reconcile and finish booking", "balance payment");
+        await sendText(event, channel, event.hostPhone, paymentText(vendor, r.payment, false));
+      }
     }
     await store.saveEvent(event);
   } finally {
     unlock(eventId);
   }
 }
+
+const PAYMENT_CHANGE_EXPLANATION = "The invoice carries payment details that differ from the number on file.";
 
 export type InvoiceInput = { vendorId: string; lineItems: LineItem[]; terms: string; paymentInstructions?: string };
 
@@ -248,14 +263,17 @@ export async function receiveInvoice(eventId: string, input: InvoiceInput, expla
       po.status = "invoiced";
       const due = balanceCents(po, event);
       audit(event, "invoice_matched", `${vendor.id} balance ${due}`);
-      if (due > 0) {
+      if (hasUnreconciledPayment(event, vendor.id)) await holdBalance(event, vendor);
+      else if (due > 0) {
         const a = createApproval(event, "payment", `${vendor.id}:${po.id}`, now);
         approvalRequested = true;
         await sendText(event, channel, event.hostPhone, balanceApprovalText(vendor, due, a.code));
       } else await sendText(event, channel, event.hostPhone, invoiceSettledText(vendor));
     } else {
       const kind = m.kind!;
-      const explanation = po ? await explain(po, invoice, m.lines, event.audit) : m.lines[0];
+      // payment_change never goes to the model: vendor-controlled payment text must not shape what the host reads
+      const explanation = kind === "payment_change" ? PAYMENT_CHANGE_EXPLANATION
+        : po ? await explain(po, invoice, m.lines, event.audit) : m.lines[0];
       exception = { id: randomUUID(), eventId, vendorId: vendor.id, invoiceId: invoice.id, kind, lines: m.lines, explanation,
         approver: kind === "payment_change" || kind === "no_po" ? "planner" : "host", status: "open", createdAt: now.toISOString() };
       event.financeExceptions.push(exception);
@@ -290,7 +308,8 @@ export async function onInboundText(from: string, body: string, rowId?: number):
       if (outcome === "approved") balance = approval.summary;
       else {
         planner(event, `Host declined the balance (${approval.summary})`, "balance approval");
-        await sendText(event, channel, event.hostPhone, "Got it, the balance is not paid. A planner will follow up.");
+        const vendor = await store.getVendor(approval.summary.split(":")[0]);
+        if (vendor) await sendText(event, channel, event.hostPhone, balanceDeclinedText(vendor));
       }
     }
     else if (outcome === "approved") {

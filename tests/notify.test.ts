@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { allDoneText, balanceApprovalText, invoiceHeldText, invoiceSettledText, paymentText, summaryText, vendorQuoteText, vendorConfirmText } from "../src/lib/notify";
+import { allDoneText, balanceApprovalText, balanceDeclinedText, balanceHeldText, balancePaidText, invoiceHeldText, invoiceSettledText, paymentText, summaryText, vendorQuoteText, vendorConfirmText } from "../src/lib/notify";
 import { budgetCheck } from "../src/lib/rules";
 import type { Event, EventBrief, Payment, QuoteExtract, Vendor, VendorQuote } from "../src/lib/types";
 
@@ -69,4 +69,12 @@ test("invoice templates", () => {
   assert.equal(invoiceHeldText(cv, "Total is $200 over the PO."), "Held Casa Verde's invoice: Total is $200 over the PO. A planner will follow up.");
   assert.equal(balanceApprovalText(cv, 130000, "4821"), "Invoice from Casa Verde matches the quote. Pay the remaining $1,300? Reply YES 4821 or NO 4821.");
   assert.equal(invoiceSettledText(cv), "Invoice from Casa Verde matches the quote. Nothing more to pay.");
+});
+
+test("balance templates", () => {
+  const cv = v("a", "Casa Verde");
+  assert.equal(balanceHeldText(cv), "The remaining balance for Casa Verde is on hold until the deposit is reconciled.");
+  assert.equal(balancePaidText(cv, { id: "p", ref: "pi_9", amountCents: 130000, status: "succeeded" } as Payment),
+    "Paid the remaining $1,300 to Casa Verde (Stripe test mode). Ref pi_9.");
+  assert.equal(balanceDeclinedText(cv), "Got it, the balance for Casa Verde is not paid. A planner will follow up.");
 });

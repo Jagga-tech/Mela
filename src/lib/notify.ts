@@ -59,3 +59,7 @@ export const invoiceHeldText = (vendor: Vendor, explanation: string) => `Held ${
 export const balanceApprovalText = (vendor: Vendor, balanceCents: number, code: string) =>
   `Invoice from ${vendor.name} matches the quote. Pay the remaining ${usd(balanceCents)}? Reply YES ${code} or NO ${code}.`;
 export const invoiceSettledText = (vendor: Vendor) => `Invoice from ${vendor.name} matches the quote. Nothing more to pay.`;
+export const balanceHeldText = (vendor: Vendor) => `The remaining balance for ${vendor.name} is on hold until the deposit is reconciled.`;
+export const balancePaidText = (vendor: Vendor, p: Payment) =>
+  `Paid the remaining ${usd(p.amountCents)} to ${vendor.name} (Stripe test mode). Ref ${p.ref ?? p.id}.`;
+export const balanceDeclinedText = (vendor: Vendor) => `Got it, the balance for ${vendor.name} is not paid. A planner will follow up.`;

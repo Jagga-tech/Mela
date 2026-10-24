@@ -185,6 +185,8 @@ test("receiveInvoice payment_change → planner approver; no PO → no_po", asyn
   const e = await invoiceSetup("+15550008884", 50000);
   const r = await receiveInvoice(e.id, { vendorId: "venue-casa-verde", lineItems: lines(1800), terms: "net 15", paymentInstructions: "+15559990000" }, stub);
   assert.equal(r.exception?.kind, "payment_change"); assert.equal(r.exception?.approver, "planner");
+  // fixed wording; the model (here the stub) is never asked
+  assert.equal(r.exception?.explanation, "The invoice carries payment details that differ from the number on file.");
   const n = await receiveInvoice(e.id, { vendorId: "decor-flor", lineItems: lines(900), terms: "" }, stub);
   assert.equal(n.exception?.kind, "no_po"); assert.equal(n.exception?.explanation, "No purchase order for this vendor");
 });
@@ -212,5 +214,29 @@ test("YES to a balance approval keeps status and runs the balance through the pa
   assert.equal(after.status, "paid");
   // no CRS credentials in tests → vendor check is "review" → the balance is refused, never paid blind
   assert.ok(after.humanTasks.some((t) => t.question.startsWith("Balance to Casa Verde not paid (vendor check not clear)")));
+  assert.equal(after.payments.length, 1);
+});
+
+test("an unknown deposit holds the balance: no approval on the invoice, no payment on a YES", async () => {
+  const { receiveInvoice, onInboundText, store } = await load();
+  const e = await invoiceSetup("+15550008887", 50000);
+  e.payments[0].status = "unknown"; await store.saveEvent(e);
+  const r = await receiveInvoice(e.id, { vendorId: "venue-casa-verde", lineItems: lines(1800), terms: "net 15" }, stub);
+  assert.equal(r.approvalRequested, false);
+  let after = (await store.getEvent(e.id))!;
+  assert.ok(after.messages.at(-1)!.body.includes("on hold until the deposit is reconciled"));
+  assert.ok(after.humanTasks.some((t) => t.question === "Reconcile Casa Verde deposit before paying the balance"));
+
+  // approval created while the deposit looked fine, then the deposit turns out unknown: the balance job still holds
+  const e2 = await invoiceSetup("+15550008888", 50000);
+  await receiveInvoice(e2.id, { vendorId: "venue-casa-verde", lineItems: lines(1800), terms: "net 15" }, stub);
+  const cur = (await store.getEvent(e2.id))!;
+  cur.payments[0].status = "unknown"; await store.saveEvent(cur);
+  assert.equal(await onInboundText(cur.hostPhone, "YES " + cur.approvals[0].code), "approved");
+  after = (await store.getEvent(e2.id))!;
+  for (let i = 0; i < 50 && !after.audit.some((a) => a.action === "balance_blocked_unreconciled"); i++) {
+    await new Promise((res) => setTimeout(res, 20)); after = (await store.getEvent(e2.id))!;
+  }
+  assert.ok(after.audit.some((a) => a.action === "balance_blocked_unreconciled"));
   assert.equal(after.payments.length, 1);
 });

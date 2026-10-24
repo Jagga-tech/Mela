@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { balanceCents, createPurchaseOrders, matchInvoice } from "../src/integrations/hyphenate";
+import { balanceCents, createPurchaseOrders, hasUnreconciledPayment, matchInvoice } from "../src/integrations/hyphenate";
 import type { Event, Invoice, Payment, PurchaseOrder, Vendor, VendorQuote } from "../src/lib/types";
 
 const now = new Date("2026-10-24T12:00:00Z");
@@ -56,8 +56,26 @@ test("balanceCents subtracts succeeded payments for the vendor, min 0", () => {
   const e = ev();
   const pay = (vendorId: string, amountCents: number, status: Payment["status"] = "succeeded") =>
     ({ vendorId, amountCents, status, kind: "deposit" }) as Payment;
-  e.payments = [pay("v1", 50000), pay("v1", 99999, "unknown"), pay("v2", 70000)];
+  e.payments = [pay("v1", 50000), pay("v2", 70000, "unknown")];
   assert.equal(balanceCents(po, e), 130000);
+  assert.equal(hasUnreconciledPayment(e, "v1"), false);
+  // an unknown deposit blocks the balance instead of being treated as unpaid
+  e.payments.push(pay("v1", 50000, "unknown"));
+  assert.equal(hasUnreconciledPayment(e, "v1"), true);
+  e.payments[2].status = "pending";
+  assert.equal(hasUnreconciledPayment(e, "v1"), true);
   e.payments = [pay("v1", 180000)];
   assert.equal(balanceCents(po, e), 0);
+});
+
+test("matchInvoice: no number on file flags any payment instructions", () => {
+  assert.equal(matchInvoice(po, inv({ paymentInstructions: "Zelle 5550000001" }), { ...vendor, phone: "" }, [], now).kind, "payment_change");
+  assert.equal(matchInvoice(po, inv(), { ...vendor, phone: "" }, [], now).kind, null);
+});
+
+test("createPurchaseOrders skips a vendor whose PO is invoiced, not only open", () => {
+  const e = ev();
+  createPurchaseOrders(e, [quote("v1", 1800, 500)], now);
+  e.purchaseOrders[0].status = "invoiced";
+  assert.equal(createPurchaseOrders(e, [quote("v1", 1800, 500)], now).length, 0);
 });
