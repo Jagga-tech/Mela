@@ -44,7 +44,8 @@ export function buildFinanceCase(args: { eventLabel: string; quote: Quote; commi
   const now = args.now ?? new Date();
   const r = evaluateInvoice(quote, invoice, policy);
   const draftId = "PAY-" + invoice.id.replace(/\D/g, "").slice(-4).padStart(4, "0");
-  const t = (s: number) => new Date(now.getTime() + s * 1000);
+  // the agent's steps happened just before the case is opened, so a human decision always sorts after them
+  const t = (s: number) => new Date(now.getTime() - (20 - s) * 1000);
   const audit: AuditEvent[] = [
     ev(t(0), SYSTEM, `Invoice ${invoice.id} received · ${usd(invoice.totalCents, { exact: true })}`, [invoice.id], "Simulated AP inbox"),
     ev(t(6), MELA_AP_AGENT, `Matched ${invoice.id} to commitment ${args.commitmentId} / quote ${quote.id}`, [args.commitmentId, quote.id],

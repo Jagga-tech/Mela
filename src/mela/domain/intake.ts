@@ -2,7 +2,7 @@
 // It only records what the host literally said. Anything it can't read becomes a question,
 // never a guess. Priorities come only from the host's own wording ("must", "prefer", "flexible").
 import type { BudgetScope, ClarifyingQuestion, EventBrief, EventRequirement, RequirementKey, RequirementPriority } from "../contracts";
-import { newId, usd } from "./util";
+import { formatDate, newId, usd } from "./util";
 
 const OCCASIONS = [
   "baby shower", "bridal shower", "quinceañera", "quinceanera", "wedding", "birthday", "graduation",
@@ -88,7 +88,7 @@ export function parseIntakeText(text: string): ParsedIntake {
     out.budgetCents = dollars * 100 + (money[2] ? Number(money[2]) : 0);
   }
   if (/\b(venue budget|budget for the venue|for the venue( only)?|venue only|venue cap)\b/i.test(text)) out.budgetScope = "venue_only";
-  else if (/\b(food and venue|venue and food|venue and catering|catering and venue)\b/i.test(text)) out.budgetScope = "food_and_venue";
+  else if (/\b(food (?:and|\+|&) venue|venue and food|venue and catering|catering and venue)\b/i.test(text)) out.budgetScope = "food_and_venue";
   else if (/\b(total|all[- ]in|whole event|entire event|everything)\b/i.test(text)) out.budgetScope = "all_in";
 
   const name = text.match(/\b(?:my name is|i'm|i am)\s+([A-Z][a-z]+)\b(?!\s+(?:planning|hosting|looking|throwing))/);
@@ -160,7 +160,7 @@ export function applyParsed(brief: EventBrief, p: ParsedIntake): { brief: EventB
   };
   if (p.occasion) set("occasion", p.occasion, `Occasion: ${p.occasion}`);
   if (p.city) set("city", p.city, `City: ${p.city}`);
-  if (p.dateTarget) set("dateTarget", p.dateTarget, `Date: ${p.dateTarget}`);
+  if (p.dateTarget) set("dateTarget", p.dateTarget, `Date: ${formatDate(p.dateTarget)}`);
   if (p.guestRange) set("guestRange", p.guestRange, `Guests: ${p.guestRange.min === p.guestRange.max ? p.guestRange.max : `${p.guestRange.min}–${p.guestRange.max}`}`);
   if (p.hostName) set("hostName", p.hostName, `Name: ${p.hostName}`);
   if (p.budgetCents !== undefined || p.budgetScope) {

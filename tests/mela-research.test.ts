@@ -81,3 +81,10 @@ test("cancelled research says so", async () => {
   const s = await svc.getResearch(first.job, demoBrief());
   assert.equal(s.job.status, "cancelled");
 });
+
+test("a venue cap isn't 'met' while other fees are unknown, and venue needs don't leak onto caterers", () => {
+  const fruitvale = rec("v-fruitvale-hall");
+  assert.equal(fruitvale.checks.find((c) => c.requirementId === "venue_budget")?.result, "unknown");
+  assert.equal(rec("v-lakeview-loft").checks.find((c) => c.requirementId === "venue_budget")?.result, "meets");
+  assert.ok(rec("c-cocina-abuela").checks.every((c) => !["indoor_outdoor", "capacity", "venue_budget"].includes(c.requirementId)));
+});

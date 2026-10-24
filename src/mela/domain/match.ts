@@ -87,7 +87,12 @@ export function checkRequirement(brief: EventBrief, vendor: Vendor, facts: Sourc
       const p = priceFor(brief, vendor, facts);
       if (p.amountCents === null) return { ...base, result: "unknown", factIds: p.factIds, note: "No published price to check against your cap" };
       const cap = Number(req.value);
-      if (p.amountCents <= cap) return { ...base, result: p.priceType === "published" ? "meets" : "unknown", factIds: p.factIds, note: `${p.note} ≤ ${usd(cap)}` };
+      // a cap is only "met" when every fee is known; a cheap rental with unknown fees still needs asking
+      const feesKnown = resolve(factFor(facts, vendor.id, "cleaning_fee")).state === "verified";
+      if (p.amountCents <= cap)
+        return p.priceType === "published" && feesKnown
+          ? { ...base, result: "meets", factIds: p.factIds, note: `${p.note} ≤ ${usd(cap)}` }
+          : { ...base, result: "unknown", factIds: p.factIds, note: `${usd(p.amountCents)} ≤ ${usd(cap)} so far, but other fees are unknown — ask` };
       return { ...base, result: "violates", factIds: p.factIds, note: `${usd(p.amountCents)} is over your ${usd(cap)} venue cap` };
     }
     case "cuisine":
@@ -106,7 +111,7 @@ export function checkRequirement(brief: EventBrief, vendor: Vendor, facts: Sourc
 }
 
 export function evaluateVendor(brief: EventBrief, vendor: Vendor, facts: SourceFact[]): Recommendation {
-  const checks = brief.requirements.map((r) => checkRequirement(brief, vendor, facts, r)).filter((c) => c.result !== "not_applicable" || c.priority === "FLEXIBLE");
+  const checks = brief.requirements.filter((r) => r.appliesTo === vendor.category).map((r) => checkRequirement(brief, vendor, facts, r));
   const must = checks.filter((c) => c.priority === "MUST_HAVE");
   const matchStatus = must.some((c) => c.result === "violates")
     ? "excluded"

@@ -90,3 +90,10 @@ test("a clean invoice matches without an exception", () => {
   assert.equal(fc.outcome, "matched");
   assert.equal(fc.exception, null);
 });
+
+test("the audit trail is chronological after a decision", async () => {
+  const fc = await demoCase();
+  const next = recordManagerDecision(fc, { decision: "ask_vendor", reason: "Explain the setup fee.", actor: rosa });
+  const times = next.audit.map((e) => e.at);
+  assert.deepEqual(times, [...times].sort());
+});
