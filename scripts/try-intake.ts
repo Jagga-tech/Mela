@@ -2,6 +2,8 @@ import "./env";
 import { runIntake } from "../src/agents/intake";
 import { findVendors } from "../src/agents/vendor";
 import { explain } from "../src/agents/explainer";
+import { buildCallScript } from "../src/agents/outreach";
+import { extractQuote } from "../src/agents/quote";
 import { store } from "../src/lib/store";
 import { checkFit } from "../src/lib/rules";
 import type { AuditEvent } from "../src/lib/types";
@@ -26,6 +28,11 @@ if (first.ok) {
       if (v) items.push({ vendorId: v.id, name: v.name, ...checkFit(first.data.brief, v) });
     }
     console.log(JSON.stringify(await explain(items, audit), null, 2));
+  }
+  const venue = await store.getVendor("venue-casa-verde");
+  if (venue) {
+    console.log(JSON.stringify(await buildCallScript(venue, first.data.brief, ["Is the venue free on the first Saturday of December?", "What is the total price?", "Is a deposit required?"], audit), null, 2));
+    console.log(JSON.stringify(await extractQuote(store.seed.transcripts.vendors["venue-casa-verde"], venue, audit), null, 2));
   }
 }
 }
