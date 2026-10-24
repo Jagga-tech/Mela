@@ -75,7 +75,11 @@ export type FinanceCase = {
 
 export type VendorCategory = "venue" | "catering" | "decor";
 export type Vendor = { id: string; name: string; category: VendorCategory; phone: string;
-  capacity: number | null; priceHintUsd: number | null; accessibility: string[]; dietary: string[] };
+  capacity: number | null; priceHintUsd: number | null; accessibility: string[]; dietary: string[];
+  contactFirstName: string; contactLastName: string; email: string | null;
+  address: { addressLine1: string; city: string; state: string; postalCode: string } | null };
+export type RiskLevel = "clear" | "review" | "block";
+export type VendorRisk = { vendorId: string; level: RiskLevel; reasons: string[]; checkedAt: string; source: "crs" };
 export type MissingField = { field: keyof EventBrief; question: string };
 export type CallScript = { opening: string; questions: string[]; closing: string; mustNotAgreeTo: string[] };
 export type CallKind = "host_confirm" | "vendor" | "host_final";
@@ -84,7 +88,7 @@ export type CallRecord = { id: string; eventId: string; kind: CallKind; vendorId
 export type QuoteExtract = { available: boolean | null; priceUsd: number | null; depositUsd: number | null;
   terms: string[]; evidence: { field: string; line: string }[]; openQuestions: string[] };
 export type VendorQuote = { vendorId: string; callId: string; extract: QuoteExtract; createdAt: string };
-export type ShortlistItem = { vendorId: string; fit: FitStatus; conflicts: string[]; unknowns: string[]; reason: string };
+export type ShortlistItem = { vendorId: string; fit: FitStatus; conflicts: string[]; unknowns: string[]; reason: string; risk?: RiskLevel };
 export type ApprovalKind = "plan" | "payment";
 export type Approval = { id: string; eventId: string; kind: ApprovalKind; code: string; summary: string;
   status: "pending" | "approved" | "declined" | "expired"; createdAt: string; expiresAt: string;

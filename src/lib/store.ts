@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { Event, Vendor, VendorCategory } from "@/lib/types";
+import type { Event, Vendor, VendorCategory, VendorRisk } from "@/lib/types";
 import { isFromHost } from "@/integrations/phone";
 
 export type Seed = { vendors: Vendor[];
@@ -16,9 +16,11 @@ export type Store = {
   listVendors(category?: VendorCategory): Promise<Vendor[]>;
   getVendor(id: string): Promise<Vendor | null>;
   claimIdempotencyKey(key: string): Promise<boolean>;
+  getVendorRisk(vendorId: string): Promise<VendorRisk | null>;
+  saveVendorRisk(r: VendorRisk): Promise<void>;
   seed: Seed;
 };
-type Data = { events: Record<string, Event>; keys: string[] };
+type Data = { events: Record<string, Event>; keys: string[]; risks?: Record<string, VendorRisk> };
 
 export function fileStore(path = process.env.MELA_STORE ?? "data/store.json"): Store {
   const seed: Seed = JSON.parse(readFileSync(join(process.cwd(), "data/seed.json"), "utf8"));
@@ -54,6 +56,8 @@ export function fileStore(path = process.env.MELA_STORE ?? "data/store.json"): S
       const d = read(); if (d.keys.includes(key)) return false;
       d.keys.push(key); write(d); return true;
     },
+    async getVendorRisk(vendorId) { return read().risks?.[vendorId] ?? null; },
+    async saveVendorRisk(r) { const d = read(); (d.risks ??= {})[r.vendorId] = r; write(d); },
   };
 }
 

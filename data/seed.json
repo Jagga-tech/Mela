@@ -1,8 +1,8 @@
 {
   "vendors": [
-    { "id": "venue-casa-verde", "name": "Casa Verde", "category": "venue", "phone": "+15550000001", "capacity": 120, "priceHintUsd": 1800, "accessibility": ["step-free"], "dietary": [] },
-    { "id": "cater-la-mesa", "name": "La Mesa Catering", "category": "catering", "phone": "+15550000002", "capacity": null, "priceHintUsd": 4500, "accessibility": [], "dietary": ["vegetarian", "halal"] },
-    { "id": "decor-flor", "name": "Flor Decor", "category": "decor", "phone": "+15550000003", "capacity": null, "priceHintUsd": 900, "accessibility": [], "dietary": [] }
+    { "id": "venue-casa-verde", "name": "Casa Verde", "category": "venue", "phone": "+15550000001", "capacity": 120, "priceHintUsd": 1800, "accessibility": ["step-free"], "dietary": [], "contactFirstName": "Ana", "contactLastName": "Verde", "email": null, "address": null },
+    { "id": "cater-la-mesa", "name": "La Mesa Catering", "category": "catering", "phone": "+15550000002", "capacity": null, "priceHintUsd": 4500, "accessibility": [], "dietary": ["vegetarian", "halal"], "contactFirstName": "Luis", "contactLastName": "Mesa", "email": null, "address": null },
+    { "id": "decor-flor", "name": "Flor Decor", "category": "decor", "phone": "+15550000003", "capacity": null, "priceHintUsd": 900, "accessibility": [], "dietary": [], "contactFirstName": "Flor", "contactLastName": "Diaz", "email": null, "address": null }
   ],
   "mandate": { "capCents": 1200000, "expiresAt": "2026-12-31T23:59:59.000Z" }
 }

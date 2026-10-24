@@ -8,13 +8,14 @@ import { isPastApproval, leadSpec, makeLeadTools, quotesToPay, sendText, setStat
 export { advanceStatus, quotesToPay } from "@/agents/lead";
 import { store } from "@/lib/store";
 import { applyReply, parseReply, type ReplyOutcome } from "@/lib/approvals";
-import { amountToPayCents } from "@/lib/rules";
+import { amountToPayCents, riskIsFresh, vendorRisk } from "@/lib/rules";
 import { payVendor, type PayRefusal } from "@/lib/payments";
 import { allDoneText, declinedText, expiredText, needsAttentionText, paymentText, vendorConfirmText, vendorQuoteText } from "@/lib/notify";
 import { getChannel } from "@/integrations/channel";
 import { getPayAdapter } from "@/integrations/pay";
+import { crsClient } from "@/integrations/crs";
 import { normalizePhone } from "@/integrations/phone";
-import type { CallKind, CallScript, Event, EventBrief, Payment } from "@/lib/types";
+import type { CallKind, CallScript, Event, EventBrief, Payment, Vendor, VendorRisk } from "@/lib/types";
 
 export const channel = getChannel(onCallEnded, store);
 
@@ -146,7 +147,22 @@ export async function onCallEnded(callId: string, transcript: string): Promise<v
 
 const REFUSAL_WORDS: Record<PayRefusal, string> = { over_cap: "over the spending limit", amount_unknown: "price unknown",
   duplicate: "already paid", no_mandate: "payment setup problem", mandate_not_approved: "payment setup problem",
-  mandate_expired: "payment setup problem", vendor_not_in_mandate: "payment setup problem" };
+  mandate_expired: "payment setup problem", vendor_not_in_mandate: "payment setup problem", vendor_risk: "vendor check not clear" };
+
+// Who are we paying: a stored result younger than 7 days, else a fresh CRS check. Only level and reasons are kept.
+export async function ensureVendorRisk(event: Event, vendor: Vendor, now: Date): Promise<VendorRisk> {
+  const stored = await store.getVendorRisk(vendor.id);
+  if (riskIsFresh(stored, now)) return stored;
+  const client = crsClient();
+  const settle = async <T>(p: () => Promise<T>) => { try { return await p(); } catch { return null; } };
+  const { level, reasons } = client
+    ? vendorRisk(await settle(() => client.fraudFinder(vendor)), await settle(() => client.reversePhone(vendor)), vendor)
+    : { level: "review" as const, reasons: ["CRS not configured"] };
+  const risk: VendorRisk = { vendorId: vendor.id, level, reasons, checkedAt: now.toISOString(), source: "crs" };
+  await store.saveVendorRisk(risk);
+  event.audit.push({ at: now.toISOString(), actor: "crs", action: "crs_check", detail: `${vendor.id} ${level}: ${reasons.join("; ")}` });
+  return risk;
+}
 
 export const allPaid = (payments: Payment[], planned: number) =>
   planned > 0 && payments.filter((p) => p.status === "succeeded").length === planned;
@@ -159,8 +175,11 @@ async function runPayments(event: Event) {
   for (const q of plan) {
     const vendor = vendors.find((v) => v.id === q.vendorId)!;
     const isDeposit = !!q.extract.depositUsd; // same rule as amountToPayCents
+    const now = new Date();
+    const risk = await ensureVendorRisk(event, vendor, now);
     // payVendor mutates and saves this same event object; do not reload between vendors
-    const r = await payVendor(event, store, getPayAdapter(), vendor.id, amountToPayCents(q.extract), new Date());
+    const r = await payVendor(event, store, getPayAdapter(), vendor.id, amountToPayCents(q.extract), now, risk);
+    if (!r.ok && r.refusal === "vendor_risk") planner(event, `Vendor check for ${vendor.name}: ${risk.reasons.join("; ")}`, "payment run");
     if (!r.ok) { await sendText(event, channel, event.hostPhone, `Payment to ${vendor.name} was not made (${REFUSAL_WORDS[r.refusal]}).`); continue; }
     await sendText(event, channel, event.hostPhone, paymentText(vendor, r.payment, isDeposit));
     if (r.payment.status === "succeeded") await sendText(event, channel, vendor.phone, vendorConfirmText(vendor, event, r.payment, isDeposit));

@@ -6,7 +6,7 @@ import type { Event, EventBrief, Payment, QuoteExtract, Vendor, VendorQuote } fr
 
 const brief: EventBrief = { eventType: "party", location: "SF", dateWindow: { start: "2026-12-06", end: "2026-12-07" },
   guestCount: 50, budgetUsd: 12000, accessibility: [], dietary: [], preferences: [] };
-const v = (id: string, name: string): Vendor => ({ id, name, category: "venue", phone: "1", capacity: null,
+const v = (id: string, name: string): Vendor => ({ id, name, category: "venue", phone: "1", capacity: null, contactFirstName: "A", contactLastName: "B", email: null, address: null,
   priceHintUsd: null, accessibility: [], dietary: [] });
 const q = (priceUsd: number | null): QuoteExtract => ({ available: true, priceUsd, depositUsd: 500, terms: [],
   evidence: [], openQuestions: [] });

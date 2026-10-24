@@ -41,3 +41,10 @@ test("VENDOR_PHONE_<id> overrides the seed phone when the store loads", async ()
     assert.equal((await s2.getVendor("decor-flor"))?.phone, "+15550000003");
   } finally { delete process.env["VENDOR_PHONE_venue-casa-verde"]; }
 });
+
+test("saveVendorRisk then getVendorRisk round-trips; unknown is null", async () => {
+  const r = { vendorId: "venue-casa-verde", level: "clear" as const, reasons: [], checkedAt: new Date().toISOString(), source: "crs" as const };
+  await s.saveVendorRisk(r);
+  assert.deepEqual(await s.getVendorRisk("venue-casa-verde"), r);
+  assert.equal(await s.getVendorRisk("none"), null);
+});

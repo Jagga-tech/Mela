@@ -72,9 +72,12 @@ export function makeLeadTools(ctx: LeadContext): BetaRunnableTool<any>[] { // es
         if (!event.brief) return refuse("find_vendors", "no brief");
         const r = await findVendors(store, event.brief, category, ctx.audit);
         if (!r.ok) return refuse("find_vendors", "vendor search failed: " + r.reason);
-        const found = await vendors(r.data.options.map((o) => o.vendorId)); // drops ids the store does not know
-        for (const v of found) {
-          const fit = checkFit(event.brief, v);
+        const found: Vendor[] = [];
+        for (const v of await vendors(r.data.options.map((o) => o.vendorId))) { // drops ids the store does not know
+          const risk = (await store.getVendorRisk(v.id))?.level;
+          if (risk === "block") { log("vendor_hidden", v.id); continue; }
+          found.push(v);
+          const fit = { ...checkFit(event.brief, v), ...(risk && { risk }) };
           const old = event.shortlist.find((s) => s.vendorId === v.id);
           if (old) Object.assign(old, fit);
           else event.shortlist.push({ vendorId: v.id, ...fit, reason: "" });
