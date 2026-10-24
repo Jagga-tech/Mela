@@ -8,7 +8,6 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --import tsx --test tests/*.test.ts",
-    "demo:fake": "tsx scripts/demo-fake.ts",
     "try:intake": "tsx scripts/try-intake.ts"
   },
   "dependencies": {

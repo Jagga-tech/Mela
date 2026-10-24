@@ -7,8 +7,6 @@ import type { Event } from "../src/lib/types";
 
 // Env must be set before the store module is first loaded, so everything app-side is imported dynamically.
 process.env.MELA_STORE = join(mkdtempSync(join(tmpdir(), "mela-ev-")), "store.json");
-process.env.MELA_CALLS = "fake";
-process.env.MELA_TEXT = "console";
 const load = async () => ({ ...(await import("@/lib/events")), ...(await import("@/lib/store")), ...(await import("@/lib/approvals")) });
 
 const script = { opening: "", questions: [], closing: "", mustNotAgreeTo: [] };

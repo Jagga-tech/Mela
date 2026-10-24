@@ -5,7 +5,6 @@ import type { Event, Vendor, VendorCategory } from "@/lib/types";
 import { isFromHost } from "@/integrations/phone";
 
 export type Seed = { vendors: Vendor[];
-  transcripts: { host_confirm: string; host_final: string; vendors: Record<string, string> };
   mandate: { capCents: number; expiresAt: string } };
 export type Store = {
   createEvent(hostPhone: string): Promise<Event>;
