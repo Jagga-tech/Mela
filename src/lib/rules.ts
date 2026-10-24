@@ -26,7 +26,8 @@ export function checkFit(brief: EventBrief, vendor: Vendor): { fit: FitStatus; c
 
 export const toCents = (usd: number | null): number | null => (usd === null ? null : Math.round(usd * 100));
 
-export const amountToPayCents = (e: QuoteExtract): number | null => toCents(e.depositUsd ?? e.priceUsd);
+// a "no deposit" quote (0 or null) pays the quoted price, never $0
+export const amountToPayCents = (e: QuoteExtract): number | null => toCents(e.depositUsd || e.priceUsd);
 
 export function budgetCheck(brief: EventBrief, quotes: VendorQuote[]) {
   let totalCents = 0;

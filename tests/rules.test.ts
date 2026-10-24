@@ -33,6 +33,7 @@ test("amountToPayCents", () => {
   assert.equal(amountToPayCents(ex({ depositUsd: 500, priceUsd: 1800 })), 50000);
   assert.equal(amountToPayCents(ex({ priceUsd: 900 })), 90000);
   assert.equal(amountToPayCents(ex()), null);
+  assert.equal(amountToPayCents(ex({ depositUsd: 0, priceUsd: 900 })), 90000);
 });
 
 test("budgetCheck", () => {
