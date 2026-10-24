@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 240;
 
-const TEXT = "I'm planning an outdoor quinceañera in San Francisco for about 100 people, step-free access, some vegetarian guests, budget around $12,000, first weekend of December";
+const TEXT = "I'm planning an outdoor quinceañera in San Francisco for about 100 people, step-free access, some vegetarian guests, budget around $12,000, December 6 2026";
 
 export async function POST() {
   if (process.env.NODE_ENV === "production") return Response.json({ error: "not found" }, { status: 404 });
