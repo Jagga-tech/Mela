@@ -555,47 +555,37 @@ Expected: all asserts pass and the summary prints. Fix orchestration bugs found 
 
 ---
 
-### Task 12: Real channel adapters (iMessage on the Mac, Cartesia stub)
+### Task 12: Real channel adapters (iMessage via the existing Mac module, Cartesia stub)
+
+**Re-scoped Oct 24 (controller ruling):** a parallel session already wrote `src/integrations/imessage.ts` with `sendText(to, body)` (osascript), `pollReplies(sinceRowId)` and `latestRowId()` (sqlite3 over `~/Library/Messages/chat.db`), plus a SpacetimeDB relay path in `src/lib/texting.ts` that needs deps not in our committed `package.json`. This task reuses `imessage.ts` and does not touch `texting.ts`, `stdb.ts`, `relay/` or `spacetimedb/`.
 
 **Files:**
-- Create: `src/integrations/imessage.ts`, `src/integrations/cartesia.ts`, `scripts/imessage-poll.ts`, `tests/imessage.test.ts`
+- Create: `src/integrations/cartesia.ts`, `src/integrations/phone.ts`, `scripts/imessage-poll.ts`, `tests/phone.test.ts`
 - Modify: `src/integrations/channel.ts` (wire the `imessage` and `cartesia` branches)
 
 **Interfaces:**
 - Produces:
 
 ```ts
-// imessage.ts  (macOS only; the backend runs on the demo Mac)
-export function appleScriptFor(to: string, body: string): string;
-// returns: tell application "Messages"\n set s to 1st account whose service type = iMessage\n send "<escaped body>" to participant "<to>" of s\nend tell
-// escaping: backslash and double quote in body are backslash-escaped; newlines kept
-export async function sendText(to: string, body: string): Promise<void>;
-// execFile("/usr/bin/osascript", ["-e", appleScriptFor(to, body)]) with a 10 s timeout; non-zero exit → throw with stderr
-export function inboundQuery(sinceRowId: number, fromDigits: string): string;
-// SQL over chat.db: SELECT m.ROWID, h.id, m.text FROM message m JOIN handle h ON h.ROWID = m.handle_id
-//   WHERE m.is_from_me = 0 AND m.ROWID > ${sinceRowId} AND m.text IS NOT NULL ORDER BY m.ROWID
-// (the caller filters h.id by digits, since handles may be formatted "+1 (555) 123-4567" or an email)
-export async function readInbound(sinceRowId: number): Promise<{ rowId: number; from: string; body: string }[]>;
-// execFile("/usr/bin/sqlite3", ["-json", `${os.homedir()}/Library/Messages/chat.db`, inboundQuery(sinceRowId, "")]); parse JSON; [] on empty output
-export function digits(s: string): string; // keeps 0-9 only
+// phone.ts (pure)
+export function digits(s: string): string;                       // keeps 0-9 only
+export function isFromHost(from: string, hostPhone: string): boolean; // last 10 digits of each match
 // cartesia.ts
 export async function placeCall(args: { to: string; script: CallScript; callId: string }): Promise<void>;
 // ponytail: stub until the Cartesia booth confirms Line's outbound API and transcript delivery; throws "Cartesia not configured" when CARTESIA_API_KEY is unset
 export function cartesiaCalls(onCallEnded: OnCallEnded, store: Store): Pick<Channel, "callHost" | "callVendor">;
-// callVendor: phone from process.env[`VENDOR_PHONE_${vendorId}`] ?? seed vendor.phone; callHost: event.hostPhone via store; both generate callId and call placeCall
+// callVendor: phone from process.env[`VENDOR_PHONE_${vendorId}`] ?? seed vendor.phone; callHost: event.hostPhone via store.getEvent; both generate a callId, push nothing (events.ts owns CallRecords), and call placeCall
+// channel.ts getChannel: MELA_TEXT === "imessage" → sink = async (to, body) => { const r = await sendText(to, body); if (!r.ok) console.error("[imessage] send failed", r.reason) }  (import from "./imessage"); MELA_CALLS === "cartesia" → calls from cartesiaCalls, else fake calls; compose: { ...calls, text: sink }
 ```
 
-- `scripts/imessage-poll.ts`: every 2 s calls `readInbound(lastRowId)` (starting from the current max ROWID at startup so old messages are ignored), and for each row where `digits(from)` ends with the last 10 digits of `MELA_HOST_PHONE`, POSTs `{ from, body }` to `${MELA_API ?? "http://localhost:3000"}/api/webhooks/text-inbound`, then advances `lastRowId`. Logs each forwarded message. Runs beside `npm run dev` during the demo. Add script `"imessage:poll": "tsx scripts/imessage-poll.ts"`.
-- Setup note at the top of `imessage.ts`: the terminal app needs Full Disk Access (for `chat.db`) and Automation permission for Messages (first `osascript` run prompts for it).
+- `scripts/imessage-poll.ts`: loads `./env`; `let last = await latestRowId()`; every 2 s `pollReplies(last)`, for each reply with `isFromHost(reply.from, MELA_HOST_PHONE)` POST `{ from, body: text }` to `${MELA_API ?? "http://localhost:3000"}/api/webhooks/text-inbound` and set `last = reply.rowId`; log each forward. Add script `"imessage:poll": "tsx scripts/imessage-poll.ts"`.
+- Setup note at the top of the script: the terminal needs Full Disk Access (chat.db) and Automation permission for Messages.
 
-- [ ] **Step 1: Write the failing test** `tests/imessage.test.ts` (pure helpers only, no Messages access):
-  - `appleScriptFor("+15551234567", 'Reply YES 4821 or "NO"')` contains `participant "+15551234567"` and the body with the inner quotes escaped as `\"`.
-  - `inboundQuery(42, "")` contains `m.ROWID > 42` and `is_from_me = 0`.
-  - `digits("+1 (555) 123-4567")` → `"15551234567"`.
+- [ ] **Step 1: Write the failing test** `tests/phone.test.ts`: `digits("+1 (555) 123-4567")` → `"15551234567"`; `isFromHost("+1 (555) 123-4567", "5551234567")` → true; `isFromHost("+15550000001", "+15551234567")` → false.
 - [ ] **Step 2: `npm test`** → missing module.
-- [ ] **Step 3: Implement the files and wire `channel.ts`** (`MELA_TEXT=imessage` → `sendText` as the sink; `MELA_CALLS=cartesia` → `cartesiaCalls`).
-- [ ] **Step 4: Verify on the Mac**: `MELA_TEXT=imessage tsx -e 'import("@/integrations/imessage").then(m => m.sendText(process.env.MELA_HOST_PHONE!, "Mela test"))'` and confirm the text arrives on the demo phone (grant the Automation prompt once). Then run `npm run dev` and `npm run imessage:poll`, reply from the phone, and confirm the poller logs the message and the route returns an outcome. `npm test` passes.
-- [ ] **Step 5: Commit** `git add -A && git commit -m "feat: iMessage via the Mac's Messages app and Cartesia stub"`
+- [ ] **Step 3: Implement the files and wire `channel.ts`.** Commit only your own files by path plus `package.json` for the script line (do not stage the other developer's dependency edits: use `git add -p package.json` or edit a fresh copy of the scripts block only; if `package.json` has foreign uncommitted edits, leave the script line out and note it).
+- [ ] **Step 4: Verify on the Mac**: `MELA_TEXT=imessage tsx -e 'import("./src/integrations/imessage").then(m => m.sendText(process.env.MELA_HOST_PHONE!, "Mela test"))'` delivers a text to the demo phone (grant the Automation prompt once). Then `npm run dev` + `npm run imessage:poll`, reply from the phone, confirm the poller logs the forward and the route returns an outcome. Without `MELA_HOST_PHONE`, the poller exits with a clear message. `npm test` passes.
+- [ ] **Step 5: Commit** `git commit -m "feat: iMessage texts via the Mac module, poller, and Cartesia stub"`
 
 ---
 
