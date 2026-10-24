@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 
 try {
   for (const line of readFileSync(".env.local", "utf8").split("\n")) {
-    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(.*?)\s*$/);
     if (m) process.env[m[1]] ??= m[2].replace(/^(["'])(.*)\1$/, "$2");
   }
 } catch {
