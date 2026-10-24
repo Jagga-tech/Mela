@@ -9,7 +9,7 @@ export function simulatedPay(): PayAdapter {
 // Stripe test mode: one PaymentIntent per vendor deposit, charged to Stripe's Visa test card.
 // Our idempotency key is passed straight through, so a retry can never double-charge.
 export function stripePay(secretKey: string, fetchImpl: typeof fetch = fetch): PayAdapter {
-  if (!secretKey.startsWith("sk_test_")) throw new Error("STRIPE_SECRET_KEY must be a test-mode key (sk_test_...)");
+  if (!/^(sk|rk)_test_/.test(secretKey)) throw new Error("STRIPE_SECRET_KEY must be a test-mode key (sk_test_... or rk_test_...)");
   return {
     async pay({ amountCents, vendorId, idempotencyKey }) {
       const body = new URLSearchParams({
