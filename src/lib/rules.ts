@@ -1,8 +1,12 @@
 import type { EventBrief, FitStatus, QuoteExtract, Vendor, VendorQuote } from "./types";
 
+// ponytail: containment match covers phrasing drift between intake and seed; replace with a fixed tag list if it ever hides a real gap
 const missing = (need: string[], have: string[]) => {
-  const h = have.map((s) => s.toLowerCase());
-  return need.filter((n) => !h.includes(n.toLowerCase()));
+  const h = have.map((s) => s.trim().toLowerCase());
+  return need.filter((n) => {
+    const x = n.trim().toLowerCase();
+    return !h.some((y) => y.includes(x) || x.includes(y));
+  });
 };
 
 export function checkFit(brief: EventBrief, vendor: Vendor): { fit: FitStatus; conflicts: string[]; unknowns: string[] } {

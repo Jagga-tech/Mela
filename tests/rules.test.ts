@@ -43,3 +43,8 @@ test("budgetCheck", () => {
   assert.equal(budgetCheck(brief({ budgetUsd: null }), [q("a", 1)]).overByCents, null);
   assert.equal(budgetCheck(brief({ budgetUsd: 1000 }), [q("a", 1800)]).overByCents, 80000);
 });
+
+test("checkFit tolerates phrasing drift between brief and vendor tags", () => {
+  assert.deepEqual(checkFit(brief({ accessibility: ["step-free access"] }), venue({ accessibility: ["step-free"] })), { fit: "fit", conflicts: [], unknowns: [] });
+  assert.deepEqual(checkFit(brief({ dietary: ["vegetarian"] }), venue({ category: "catering", accessibility: [], dietary: ["vegetarian options", "halal"] })).conflicts, []);
+});
