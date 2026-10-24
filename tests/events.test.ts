@@ -78,3 +78,48 @@ test("quotesToPay picks one available quote per category in shortlist order", as
   e.quotes = [quote("venue-2", true), quote("venue-casa-verde", true), quote("cater-2", false), quote("cater-la-mesa", true), quote("decor-flor", null)];
   assert.deepEqual(quotesToPay(e, vendors).map((q) => q.vendorId), ["venue-casa-verde", "cater-la-mesa", "decor-flor"]);
 });
+
+test("advanceStatus: needs_planner is terminal for automated moves; paying may fall to needs_planner", async () => {
+  const { advanceStatus, store } = await load();
+  const e = await store.createEvent("+15550005555");
+  e.status = "needs_planner";
+  assert.equal(advanceStatus(e, "calling"), false);
+  assert.equal(advanceStatus(e, "paid"), false);
+  assert.equal(e.status, "needs_planner");
+  e.status = "paying";
+  assert.equal(advanceStatus(e, "needs_planner"), true);
+});
+
+test("onInboundText with the same rowId twice: second is duplicate and adds no audit entry", async () => {
+  const { onInboundText, store, createApproval } = await load();
+  const e = await store.createEvent("+15550006666");
+  createApproval(e, "plan", "s", new Date());
+  await store.saveEvent(e);
+  assert.equal(await onInboundText("+15550006666", "YES 0000", 9001), "unknown_code");
+  assert.equal(await onInboundText("+15550006666", "YES 0000", 9001), "duplicate");
+  const after = await store.getEvent(e.id);
+  assert.equal(after?.audit.filter((a) => a.action === "inbound_reply").length, 1);
+});
+
+test("a YES after a decline does not run payments", async () => {
+  const { onInboundText, store, createApproval } = await load();
+  const e = await store.createEvent("+15550007777");
+  const a = createApproval(e, "plan", "s", new Date());
+  e.status = "needs_planner";
+  await store.saveEvent(e);
+  assert.equal(await onInboundText("+15550007777", "YES " + a.code), "approved");
+  const after = (await store.getEvent(e.id))!;
+  assert.equal(after.status, "needs_planner");
+  assert.ok(after.audit.some((x) => x.action === "approval_ignored_status"));
+  assert.equal(after.messages.length, 0);
+  assert.equal(after.payments.length, 0);
+});
+
+test("allPaid only when every planned payment succeeded", async () => {
+  const { allPaid } = await load();
+  const ok = { status: "succeeded" } as Event["payments"][number];
+  assert.equal(allPaid([ok, ok, ok], 3), true);
+  assert.equal(allPaid([ok, ok, { ...ok, status: "unknown" }], 3), false);
+  assert.equal(allPaid([ok, ok], 3), false);
+  assert.equal(allPaid([], 0), false);
+});

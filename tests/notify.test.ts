@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { summaryText, vendorQuoteText, vendorConfirmText } from "../src/lib/notify";
+import { allDoneText, paymentText, summaryText, vendorQuoteText, vendorConfirmText } from "../src/lib/notify";
 import { budgetCheck } from "../src/lib/rules";
 import type { Event, EventBrief, Payment, QuoteExtract, Vendor, VendorQuote } from "../src/lib/types";
 
@@ -37,8 +37,31 @@ test("vendorQuoteText null price / unavailable / no date", () => {
 test("vendorConfirmText branches", () => {
   const ev = { brief } as unknown as Event;
   const p = { id: "p", amountCents: 50000, status: "succeeded", simulated: true } as Payment;
-  assert.ok(vendorConfirmText(v("a", "Casa Verde"), ev, p).includes("Deposit $500 sent (simulated)."));
-  assert.ok(vendorConfirmText(v("a", "Casa Verde"), ev, { ...p, simulated: false }).includes("(Stripe test mode)"));
-  const pend = vendorConfirmText(v("a", "Casa Verde"), ev, { ...p, status: "pending" });
+  assert.ok(vendorConfirmText(v("a", "Casa Verde"), ev, p, true).includes("Deposit $500 sent (simulated)."));
+  assert.ok(vendorConfirmText(v("a", "Casa Verde"), ev, { ...p, simulated: false }, true).includes("(Stripe test mode)"));
+  const pend = vendorConfirmText(v("a", "Casa Verde"), ev, { ...p, status: "pending" }, true);
   assert.ok(pend.includes("Payment pending.") && !pend.includes("sent"));
+});
+
+test("deposit vs full price labels", () => {
+  const ev = { brief } as unknown as Event;
+  const p = { id: "p", ref: "SIM-1", amountCents: 90000, status: "succeeded", simulated: true } as Payment;
+  assert.equal(paymentText(v("c", "Flor Decor"), p, false), "Paid $900 (full price) to Flor Decor (simulated). Ref SIM-1");
+  assert.ok(paymentText(v("a", "Casa Verde"), { ...p, amountCents: 50000 }, true).startsWith("Paid $500 deposit to Casa Verde"));
+  assert.ok(vendorConfirmText(v("c", "Flor Decor"), ev, p, false).includes("Full price $900 sent (simulated)."));
+});
+
+test("summary says what is charged now", () => {
+  const vs = [v("a", "Casa Verde"), v("b", "La Mesa"), v("c", "Flor Decor")];
+  const qs = [{ ...q(1800), depositUsd: 500 }, { ...q(4950), depositUsd: 1485 }, { ...q(900), depositUsd: null }];
+  const lines = vs.map((vendor, i) => ({ vendor, q: qs[i] }));
+  const quotes: VendorQuote[] = lines.map((l) => ({ vendorId: l.vendor.id, callId: "", extract: l.q, createdAt: "" }));
+  assert.ok(summaryText(lines, budgetCheck(brief, quotes), "4821", brief)
+    .includes("Charging now: $500 deposit (Casa Verde), $1,485 deposit (La Mesa), $900 full price (Flor Decor)."));
+});
+
+test("allDoneText says simulated or Stripe test mode", () => {
+  const p = { status: "succeeded", simulated: true } as Payment;
+  assert.ok(allDoneText({ payments: [p, p] } as unknown as Event).endsWith("(simulated payments)"));
+  assert.ok(allDoneText({ payments: [p, { ...p, simulated: false }] } as unknown as Event).endsWith("(Stripe test mode)"));
 });

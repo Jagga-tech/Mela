@@ -9,16 +9,19 @@ export { advanceStatus, quotesToPay } from "@/agents/lead";
 import { store } from "@/lib/store";
 import { applyReply, parseReply, type ReplyOutcome } from "@/lib/approvals";
 import { amountToPayCents } from "@/lib/rules";
-import { payVendor } from "@/lib/payments";
-import { allDoneText, declinedText, expiredText, paymentText, vendorConfirmText, vendorQuoteText } from "@/lib/notify";
+import { payVendor, type PayRefusal } from "@/lib/payments";
+import { allDoneText, declinedText, expiredText, needsAttentionText, paymentText, vendorConfirmText, vendorQuoteText } from "@/lib/notify";
 import { getChannel } from "@/integrations/channel";
 import { getPayAdapter } from "@/integrations/pay";
-import type { CallKind, CallScript, Event, EventBrief } from "@/lib/types";
+import { normalizePhone } from "@/integrations/phone";
+import type { CallKind, CallScript, Event, EventBrief, Payment } from "@/lib/types";
 
 export const channel = getChannel(onCallEnded, store);
 
 // ponytail: in-process lock, one Node process only; move to a store-level lease if we ever run more than one
-const locks = new Set<string>();
+// kept on globalThis so Next dev hot reload does not drop held locks
+const g = globalThis as typeof globalThis & { __melaLocks?: Set<string> };
+const locks = (g.__melaLocks ??= new Set<string>());
 export const tryLock = (id: string) => (locks.has(id) ? false : (locks.add(id), true));
 export const unlock = (id: string) => void locks.delete(id);
 export const _resetLocks = () => locks.clear();
@@ -68,7 +71,9 @@ async function intakeStep(event: Event, text: string) {
 }
 
 export async function createEvent(text: string, hostPhone: string): Promise<Event> {
-  return intakeStep(await store.createEvent(hostPhone), text);
+  const phone = normalizePhone(hostPhone);
+  if (!phone) throw new Error("hostPhone needs at least 10 digits");
+  return intakeStep(await store.createEvent(phone), text);
 }
 
 export async function answerEvent(id: string, text: string): Promise<Event> {
@@ -139,35 +144,70 @@ export async function onCallEnded(callId: string, transcript: string): Promise<v
   if (next) await startLeadRun(found.id, next);
 }
 
+const REFUSAL_WORDS: Record<PayRefusal, string> = { over_cap: "over the spending limit", amount_unknown: "price unknown",
+  duplicate: "already paid", no_mandate: "payment setup problem", mandate_not_approved: "payment setup problem",
+  mandate_expired: "payment setup problem", vendor_not_in_mandate: "payment setup problem" };
+
+export const allPaid = (payments: Payment[], planned: number) =>
+  planned > 0 && payments.filter((p) => p.status === "succeeded").length === planned;
+
 async function runPayments(event: Event) {
   setStatus(event, "paying");
   await store.saveEvent(event);
   const vendors = await store.listVendors();
-  for (const q of quotesToPay(event, vendors)) {
+  const plan = quotesToPay(event, vendors);
+  for (const q of plan) {
     const vendor = vendors.find((v) => v.id === q.vendorId)!;
+    const isDeposit = !!q.extract.depositUsd; // same rule as amountToPayCents
     // payVendor mutates and saves this same event object; do not reload between vendors
     const r = await payVendor(event, store, getPayAdapter(), vendor.id, amountToPayCents(q.extract), new Date());
-    if (!r.ok) { await sendText(event, channel, event.hostPhone, `Payment to ${vendor.name} was not made (${r.refusal}).`); continue; }
-    await sendText(event, channel, event.hostPhone, paymentText(vendor, r.payment));
-    if (r.payment.status === "succeeded") await sendText(event, channel, vendor.phone, vendorConfirmText(vendor, event, r.payment));
+    if (!r.ok) { await sendText(event, channel, event.hostPhone, `Payment to ${vendor.name} was not made (${REFUSAL_WORDS[r.refusal]}).`); continue; }
+    await sendText(event, channel, event.hostPhone, paymentText(vendor, r.payment, isDeposit));
+    if (r.payment.status === "succeeded") await sendText(event, channel, vendor.phone, vendorConfirmText(vendor, event, r.payment, isDeposit));
+  }
+  if (!allPaid(event.payments, plan.length)) {
+    planner(event, "Some payments did not complete; reconcile and finish booking", "payment run");
+    setStatus(event, "needs_planner");
+    await sendText(event, channel, event.hostPhone, needsAttentionText());
+    await store.saveEvent(event);
+    return; // no "All set" call
   }
   setStatus(event, "paid");
   await sendText(event, channel, event.hostPhone, allDoneText(event));
   await placeHostCall(event, "host_final", { opening: DISCLOSURE, questions: [], closing: allDoneText(event) + " Thank you.", mustNotAgreeTo: [] });
 }
 
-export async function onInboundText(from: string, body: string): Promise<ReplyOutcome | "new_request"> {
+// Runs detached after onInboundText returns, so it takes the lock itself.
+async function paymentJob(eventId: string) {
+  await waitLock(eventId);
+  try {
+    const event = await load(eventId);
+    if (event.status !== "approved") { audit(event, "payments_skipped_status", event.status); await store.saveEvent(event); return; }
+    await runPayments(event);
+  } finally {
+    unlock(eventId);
+  }
+}
+
+export type InboundOutcome = ReplyOutcome | "new_request" | "duplicate";
+
+export async function onInboundText(from: string, body: string, rowId?: number): Promise<InboundOutcome> {
+  // the poller replays a row it could not confirm; each chat.db row is handled once
+  if (rowId !== undefined && !(await store.claimIdempotencyKey(`inbound:${rowId}`))) return "duplicate";
   const code = parseReply(body).code;
   // a non-host sender is found by the code they quote, so they get wrong_sender instead of starting a new event
   const found = (await store.findEventByHostPhone(from)) ?? (code ? await store.findEventByPendingCode(code) : null);
   if (!found) { console.log(`[events] new_request from ${from} ignored`); return "new_request"; }
-  let next: string | null = null;
+  let next: string | null = null, pay = false;
   await waitLock(found.id);
   try {
     const event = await load(found.id);
     const { outcome } = applyReply(event, from, body, new Date());
     audit(event, "inbound_reply", outcome);
-    if (outcome === "approved") { setStatus(event, "approved"); await runPayments(event); }
+    if (outcome === "approved") {
+      if (event.status === "awaiting_approval") { setStatus(event, "approved"); pay = true; }
+      else audit(event, "approval_ignored_status", event.status);
+    }
     else if (outcome === "declined") { await sendText(event, channel, event.hostPhone, declinedText()); setStatus(event, "needs_planner"); }
     else if (outcome === "expired") { await sendText(event, channel, event.hostPhone, expiredText()); next = "approval expired"; }
     else if (outcome === "no_code") next = "host said: " + fence("host_message", body);
@@ -175,6 +215,8 @@ export async function onInboundText(from: string, body: string): Promise<ReplyOu
     return outcome;
   } finally {
     unlock(found.id);
-    if (next) await startLeadRun(found.id, next);
+    // follow-up work is detached so the webhook answers within the locked part (the poller would time out and replay)
+    if (pay) void paymentJob(found.id).catch(console.error);
+    if (next) void startLeadRun(found.id, next).catch(console.error);
   }
 }

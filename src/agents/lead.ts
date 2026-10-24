@@ -19,9 +19,12 @@ export type LeadContext = { event: Event; store: Store; channel: Channel; audit:
 const PAST_APPROVAL: EventStatus[] = ["approved", "paying", "paid", "done"];
 export const isPastApproval = (e: Event) => PAST_APPROVAL.includes(e.status);
 
-// Forward-only status. needs_planner may be set from anything before approval.
+// Forward-only status. needs_planner may be set from anything before approval, or while paying (a payment failed).
+// needs_planner is terminal for automated moves: only a planner action leaves it.
 export function advanceStatus(event: Event, next: EventStatus): boolean {
-  const ok = next === "needs_planner" ? !isPastApproval(event) : EVENT_STATUS_ORDER.indexOf(next) > EVENT_STATUS_ORDER.indexOf(event.status);
+  const ok = event.status === "needs_planner" ? false
+    : next === "needs_planner" ? event.status === "paying" || !isPastApproval(event)
+    : EVENT_STATUS_ORDER.indexOf(next) > EVENT_STATUS_ORDER.indexOf(event.status);
   if (ok) event.status = next;
   return ok;
 }
@@ -143,6 +146,7 @@ export function makeLeadTools(ctx: LeadContext): BetaRunnableTool<any>[] { // es
       inputSchema: z.object({ kind: z.literal("plan"), summary: z.string() }),
       run: async ({ kind, summary }) => {
         if (ctx.ended) return refuse("request_approval", "this run already placed a call or requested approval");
+        if (event.status !== "calling" && event.status !== "awaiting_approval") return refuse("request_approval", "cannot request approval while status is " + event.status);
         if (event.approvals.some((a) => a.status === "pending")) return refuse("request_approval", "an approval is already pending");
         const all = await store.listVendors();
         const plan = quotesToPay(event, all);
