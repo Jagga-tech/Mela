@@ -37,7 +37,7 @@ export async function ensureVendorAccount(api: StripeFetch, vendorId: string, ve
       type: "custom", country: "US", email: `${vendorId}@example.com`, business_type: "individual",
       "capabilities[transfers][requested]": "true", "business_profile[name]": vendorName, "business_profile[mcc]": "7299",
       "business_profile[product_description]": "Event vendor (Mela demo)",
-      "tos_acceptance[date]": String(Math.floor(Date.now() / 1000)), "tos_acceptance[ip]": "127.0.0.1", "tos_acceptance[service_agreement]": "recipient",
+      "tos_acceptance[date]": String(Math.floor(Date.now() / 1000)), "tos_acceptance[ip]": "127.0.0.1",
       "individual[first_name]": first, "individual[last_name]": rest.join(" ") || "Vendor", "individual[email]": `${vendorId}@example.com`,
       "individual[phone]": "0000000000", "individual[dob][day]": "1", "individual[dob][month]": "1", "individual[dob][year]": "1901",
       "individual[ssn_last_4]": "0000", "individual[address][line1]": "address_full_match", "individual[address][city]": "Berkeley",
