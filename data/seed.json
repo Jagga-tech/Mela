@@ -1,16 +1,16 @@
 {
   "vendors": [
     { "id": "venue-casa-verde", "name": "Casa Verde", "category": "venue", "phone": "+15550000001", "capacity": 120, "priceHintUsd": 1800, "accessibility": ["step-free"], "dietary": [],
-      "contactFirstName": "GRACE", "contactLastName": "NAKAMURA", "contactPhone": "+15550101019", "email": "grace.nakamura@example.com",
+      "contactFirstName": "GRACE", "contactLastName": "NAKAMURA", "contactPhone": "+15550101019", "email": "grace.nakamura@example.com", "language": "en",
       "address": { "addressLine1": "1850 SOLANO AVE", "city": "BERKELEY", "state": "CA", "postalCode": "94707" } },
     { "id": "cater-la-mesa", "name": "La Mesa Catering", "category": "catering", "phone": "+15550000002", "capacity": null, "priceHintUsd": 4500, "accessibility": [], "dietary": ["vegetarian", "halal"],
-      "contactFirstName": "MARGARET", "contactLastName": "OKAFOR", "contactPhone": "+15550101001", "email": "margaret.okafor@example.com",
+      "contactFirstName": "MARGARET", "contactLastName": "OKAFOR", "contactPhone": "+15550101001", "email": "margaret.okafor@example.com", "language": "en",
       "address": { "addressLine1": "1420 WILLOW CREEK DR", "city": "SAN JOSE", "state": "CA", "postalCode": "95125" } },
     { "id": "decor-flor", "name": "Flor Decor", "category": "decor", "phone": "+15550000003", "capacity": null, "priceHintUsd": 900, "accessibility": [], "dietary": [],
-      "contactFirstName": "JASMINE", "contactLastName": "REYES", "contactPhone": "+15550101003", "email": "jasmine.reyes@example.com",
+      "contactFirstName": "JASMINE", "contactLastName": "REYES", "contactPhone": "+15550101003", "email": "jasmine.reyes@example.com", "language": "en",
       "address": { "addressLine1": "2210 UNIVERSITY AVE APT 4B", "city": "BERKELEY", "state": "CA", "postalCode": "94704" } },
     { "id": "decor-kb-events", "name": "KB Events", "category": "decor", "phone": "+15550000004", "capacity": null, "priceHintUsd": 700, "accessibility": [], "dietary": [],
-      "contactFirstName": "KAYLA", "contactLastName": "BRENNAN", "contactPhone": "+15550101013", "email": "kb.9921x@example.com",
+      "contactFirstName": "KAYLA", "contactLastName": "BRENNAN", "contactPhone": "+15550101013", "email": "kb.9921x@example.com", "language": "en",
       "address": { "addressLine1": "9021 KINGSTON PIKE", "city": "KNOXVILLE", "state": "TN", "postalCode": "37923" } }
   ],
   "mandate": { "capCents": 1200000, "expiresAt": "2026-12-31T23:59:59.000Z" }

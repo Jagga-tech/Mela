@@ -5,7 +5,7 @@ import type { Event } from "../src/lib/types";
 
 const mkEvent = (): Event => ({ id: "e1", hostPhone: "+1 (555) 010-0000", status: "draft", brief: null, missing: [],
   shortlist: [], calls: [], quotes: [], approvals: [], mandate: null, payments: [], messages: [], humanTasks: [],
-  research: [], audit: [], purchaseOrders: [], invoices: [], financeExceptions: [], createdAt: "", updatedAt: "" });
+  research: [], audit: [], purchaseOrders: [], invoices: [], financeExceptions: [], language: "en", createdAt: "", updatedAt: "" });
 const t0 = new Date("2026-10-24T12:00:00Z");
 const later = (min: number) => new Date(t0.getTime() + min * 60000);
 
@@ -24,7 +24,10 @@ test("createApproval gives distinct codes and a 30 min TTL", () => {
 test("parseReply", () => {
   assert.deepEqual(parseReply("yes 4821."), { verb: "YES", code: "4821" });
   assert.deepEqual(parseReply("Yes, 4821"), { verb: "YES", code: "4821" });
-  assert.equal(parseReply("ok 4821").verb, null);
+  assert.equal(parseReply("maybe 4821").verb, null);
+  assert.deepEqual(parseReply("हाँ 4821"), { verb: "YES", code: "4821" });
+  assert.deepEqual(parseReply("không 4821"), { verb: "NO", code: "4821" });
+  assert.deepEqual(parseReply("4821"), { verb: null, code: "4821" });
   assert.equal(parseReply("YES").code, null);
 });
 

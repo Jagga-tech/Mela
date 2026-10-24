@@ -6,7 +6,7 @@ import type { Event, Invoice, Payment, PurchaseOrder, Vendor, VendorQuote } from
 const now = new Date("2026-10-24T12:00:00Z");
 const ev = (): Event => ({ id: "e1", hostPhone: "+15550100000", status: "approved", brief: null, missing: [], shortlist: [], calls: [],
   quotes: [], approvals: [], mandate: null, payments: [], messages: [], humanTasks: [], research: [], audit: [],
-  purchaseOrders: [], invoices: [], financeExceptions: [], createdAt: "", updatedAt: "" });
+  purchaseOrders: [], invoices: [], financeExceptions: [], language: "en", createdAt: "", updatedAt: "" });
 const quote = (vendorId: string, priceUsd: number | null, depositUsd: number | null): VendorQuote => ({ vendorId, callId: "c-" + vendorId, createdAt: "",
   extract: { available: true, priceUsd, depositUsd, terms: [], evidence: [], openQuestions: [] } });
 const vendor = { id: "v1", name: "Casa Verde", phone: "+15550000001" } as Vendor;

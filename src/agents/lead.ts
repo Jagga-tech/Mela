@@ -5,6 +5,8 @@ import type { AgentSpec } from "@/agents/harness";
 import { findVendors } from "@/agents/vendor";
 import { explain } from "@/agents/explainer";
 import { buildCallScript } from "@/agents/outreach";
+import { translate } from "@/agents/translator";
+import type { Language } from "@/lib/i18n";
 import { checkFit, budgetCheck } from "@/lib/rules";
 import { createApproval } from "@/lib/approvals";
 import { summaryText } from "@/lib/notify";
@@ -50,7 +52,9 @@ export function quotesToPay(event: Event, vendors: Vendor[]): VendorQuote[] {
   return CATEGORIES.flatMap((c) => picked.get(c) ?? []);
 }
 
-export async function sendText(event: Event, channel: Channel, to: string, body: string) {
+// Texts go out in the recipient's language (host by default); translation falls back to English, never throws.
+export async function sendText(event: Event, channel: Channel, to: string, english: string, lang: Language = event.language) {
+  const body = await translate(english, lang, event.audit);
   await channel.text(to, body);
   event.messages.push({ at: new Date().toISOString(), direction: "out", to, body });
 }

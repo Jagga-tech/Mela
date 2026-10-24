@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { fence, runAgent } from "@/agents/harness";
 import { runIntake } from "@/agents/intake";
 import { extractQuote } from "@/agents/quote";
-import { DISCLOSURE } from "@/agents/outreach";
+import { translate } from "@/agents/translator";
+import { asLanguage, DISCLOSURES } from "@/lib/i18n";
 import { isPastApproval, leadSpec, makeLeadTools, quotesToPay, sendText, setStatus, type LeadContext } from "@/agents/lead";
 export { advanceStatus, quotesToPay } from "@/agents/lead";
 import { store } from "@/lib/store";
@@ -56,11 +57,12 @@ const briefSentence = (b: EventBrief) =>
 
 async function startConfirmCall(event: Event) {
   setStatus(event, "confirming");
-  await placeHostCall(event, "host_confirm", { opening: DISCLOSURE, mustNotAgreeTo: [], closing: "Thanks, I'll start calling vendors.",
-    questions: [`Here is what I have: ${briefSentence(event.brief!)}. Is that right, or would you like to change anything?`] });
+  const q = `Here is what I have: ${briefSentence(event.brief!)}. Is that right, or would you like to change anything?`;
+  await placeHostCall(event, "host_confirm", { opening: DISCLOSURES[event.language], mustNotAgreeTo: [],
+    closing: await translate("Thanks, I'll start calling vendors.", event.language, event.audit), questions: [await translate(q, event.language, event.audit)] });
 }
 
-async function intakeStep(event: Event, text: string) {
+async function intakeStep(event: Event, text: string, detectLanguage = false) {
   const r = await runIntake(text, event.brief, event.audit);
   if (!r.ok) {
     planner(event, "Intake failed: " + r.reason, "host request could not be read");
@@ -68,16 +70,20 @@ async function intakeStep(event: Event, text: string) {
   } else {
     event.brief = r.data.brief;
     event.missing = r.data.missing;
+    if (detectLanguage) event.language = asLanguage(r.data.language);
   }
   await store.saveEvent(event);
   if (r.ok && !event.missing.length) await startConfirmCall(event);
   return event;
 }
 
-export async function createEvent(text: string, hostPhone: string): Promise<Event> {
+// language: the form's choice wins; otherwise Intake detects it from the first message (answers never change it).
+export async function createEvent(text: string, hostPhone: string, language?: string): Promise<Event> {
   const phone = normalizePhone(hostPhone);
   if (!phone) throw new Error("hostPhone needs at least 10 digits");
-  return intakeStep(await store.createEvent(phone), text);
+  const event = await store.createEvent(phone);
+  if (language) event.language = asLanguage(language);
+  return intakeStep(event, text, !language);
 }
 
 export async function answerEvent(id: string, text: string): Promise<Event> {
@@ -170,7 +176,7 @@ async function runPayments(event: Event) {
     if (!r.ok && r.refusal === "vendor_risk") planner(event, `Vendor check for ${vendor.name}: ${risk.reasons.join("; ")}`, "payment run");
     if (!r.ok) { await sendText(event, channel, event.hostPhone, `Payment to ${vendor.name} was not made (${REFUSAL_WORDS[r.refusal]}).`); continue; }
     await sendText(event, channel, event.hostPhone, paymentText(vendor, r.payment, isDeposit));
-    if (r.payment.status === "succeeded") await sendText(event, channel, vendor.phone, vendorConfirmText(vendor, event, r.payment, isDeposit));
+    if (r.payment.status === "succeeded") await sendText(event, channel, vendor.phone, vendorConfirmText(vendor, event, r.payment, isDeposit), vendor.language);
   }
   if (!allPaid(event.payments, plan.length)) {
     planner(event, "Some payments did not complete; reconcile and finish booking", "payment run");
@@ -181,7 +187,8 @@ async function runPayments(event: Event) {
   }
   setStatus(event, "paid");
   await sendText(event, channel, event.hostPhone, allDoneText(event));
-  await placeHostCall(event, "host_final", { opening: DISCLOSURE, questions: [], closing: allDoneText(event) + " Thank you.", mustNotAgreeTo: [] });
+  await placeHostCall(event, "host_final", { opening: DISCLOSURES[event.language], questions: [],
+    closing: await translate(allDoneText(event) + " Thank you.", event.language, event.audit), mustNotAgreeTo: [] });
 }
 
 // Runs detached after onInboundText returns, so it takes the lock itself.

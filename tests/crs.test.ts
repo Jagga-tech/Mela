@@ -4,7 +4,7 @@ import type { Vendor } from "@/lib/types";
 
 const vendor: Vendor = { id: "v", name: "V", category: "venue", phone: "+15550000001", capacity: null, priceHintUsd: null,
   accessibility: [], dietary: [], contactFirstName: "Ana", contactLastName: "Verde", contactPhone: "+1 (555) 010-1019",
-  email: "ana@example.com", address: { addressLine1: "1 MAIN ST", city: "BERKELEY", state: "CA", postalCode: "94707" } };
+  email: "ana@example.com", language: "en", address: { addressLine1: "1 MAIN ST", city: "BERKELEY", state: "CA", postalCode: "94707" } };
 const env = { CRS_USERNAME: "u", CRS_PASSWORD: "p" } as unknown as NodeJS.ProcessEnv;
 type Call = { url: string; init: RequestInit };
 // scripted: each product response in order; login succeeds with tok1, tok2, ... unless loginStatus is set

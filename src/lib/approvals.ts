@@ -1,5 +1,6 @@
 import type { Approval, ApprovalKind, Event } from "./types";
 import { isFromHost } from "@/integrations/phone";
+import { tokens, verbOf } from "./i18n";
 
 export const APPROVAL_TTL_MS = 30 * 60 * 1000;
 
@@ -15,9 +16,7 @@ export function createApproval(event: Event, kind: ApprovalKind, summary: string
 }
 
 export function parseReply(body: string): { verb: "YES" | "NO" | null; code: string | null } {
-  const tokens = body.toLowerCase().replace(/[^a-z0-9]/g, " ").split(/\s+/).filter(Boolean);
-  const first = tokens[0];
-  return { verb: first === "yes" ? "YES" : first === "no" ? "NO" : null, code: tokens.find((t) => /^\d{4}$/.test(t)) ?? null };
+  return { verb: verbOf(body), code: tokens(body).find((t) => /^\d{4}$/.test(t)) ?? null };
 }
 
 export type ReplyOutcome = "approved" | "declined" | "expired" | "wrong_sender" | "no_code" | "unknown_code" | "already_answered";

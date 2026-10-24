@@ -1,4 +1,5 @@
 // Shared data contract. Frontend, backend and research all speak these shapes.
+import type { Language } from "./i18n";
 
 export type Priority = "must-have" | "preferred" | "flexible";
 
@@ -60,7 +61,7 @@ export type FinanceException = { id: string; eventId: string; vendorId: string; 
 export type VendorCategory = "venue" | "catering" | "decor";
 export type Vendor = { id: string; name: string; category: VendorCategory; phone: string;
   capacity: number | null; priceHintUsd: number | null; accessibility: string[]; dietary: string[];
-  contactFirstName: string; contactLastName: string; contactPhone: string; email: string | null;
+  contactFirstName: string; contactLastName: string; contactPhone: string; email: string | null; language: Language;
   address: { addressLine1: string; city: string; state: string; postalCode: string } | null };
 export type RiskLevel = "clear" | "review" | "block";
 export type VendorRisk = { vendorId: string; level: RiskLevel; reasons: string[]; checkedAt: string; source: "crs" };
@@ -91,5 +92,5 @@ export type Event = { id: string; hostPhone: string; status: EventStatus; brief:
   missing: MissingField[]; shortlist: ShortlistItem[]; calls: CallRecord[]; quotes: VendorQuote[];
   approvals: Approval[]; mandate: Mandate | null; payments: Payment[]; messages: Message[];
   humanTasks: HumanTask[]; research: ResearchResult[]; audit: AuditEvent[];
-  purchaseOrders: PurchaseOrder[]; invoices: Invoice[]; financeExceptions: FinanceException[]; createdAt: string; updatedAt: string };
+  purchaseOrders: PurchaseOrder[]; invoices: Invoice[]; financeExceptions: FinanceException[]; language: Language; createdAt: string; updatedAt: string };
 export const EVENT_STATUS_ORDER: EventStatus[] = ["draft","confirming","confirmed","calling","awaiting_approval","approved","paying","paid","done"];
