@@ -102,5 +102,7 @@ export type EventStatus = "draft" | "confirming" | "confirmed" | "calling" | "aw
 export type Event = { id: string; hostPhone: string; status: EventStatus; brief: EventBrief | null;
   missing: MissingField[]; shortlist: ShortlistItem[]; calls: CallRecord[]; quotes: VendorQuote[];
   approvals: Approval[]; mandate: Mandate | null; payments: Payment[]; messages: Message[];
-  humanTasks: HumanTask[]; research: ResearchResult[]; audit: AuditEvent[]; createdAt: string; updatedAt: string };
+  humanTasks: HumanTask[]; research: ResearchResult[]; audit: AuditEvent[]; createdAt: string; updatedAt: string;
+  hostName?: string; // from the web form, never from an agent; shared with booked vendors
+  textsStopped?: boolean }; // host replied STOP
 export const EVENT_STATUS_ORDER: EventStatus[] = ["draft","confirming","confirmed","calling","awaiting_approval","approved","paying","paid","done"];

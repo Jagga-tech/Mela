@@ -7,7 +7,7 @@ export type Seed = { vendors: Vendor[];
   transcripts: { host_confirm: string; host_final: string; vendors: Record<string, string> };
   mandate: { capCents: number; expiresAt: string } };
 export type Store = {
-  createEvent(hostPhone: string): Promise<Event>;
+  createEvent(hostPhone: string, hostName?: string): Promise<Event>;
   getEvent(id: string): Promise<Event | null>;
   saveEvent(e: Event): Promise<void>;
   findEventByCallId(callId: string): Promise<Event | null>;
@@ -30,9 +30,9 @@ export function fileStore(path = process.env.MELA_STORE ?? "data/store.json"): S
   const events = () => Object.values(read().events);
   return {
     seed,
-    async createEvent(hostPhone) {
+    async createEvent(hostPhone, hostName) {
       const now = new Date().toISOString(), id = randomUUID();
-      const e: Event = { id, hostPhone, status: "draft", brief: null, missing: [], shortlist: [], calls: [], quotes: [],
+      const e: Event = { id, hostPhone, ...(hostName ? { hostName } : {}), status: "draft", brief: null, missing: [], shortlist: [], calls: [], quotes: [],
         approvals: [], payments: [], messages: [], humanTasks: [], research: [], audit: [], createdAt: now, updatedAt: now,
         mandate: { id: randomUUID(), eventId: id, vendorIds: seed.vendors.map(v => v.id), capCents: seed.mandate.capCents,
           spentCents: 0, expiresAt: seed.mandate.expiresAt, status: "approved" } };

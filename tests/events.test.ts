@@ -78,3 +78,23 @@ test("quotesToPay picks one available quote per category in shortlist order", as
   e.quotes = [quote("venue-2", true), quote("venue-casa-verde", true), quote("cater-2", false), quote("cater-la-mesa", true), quote("decor-flor", null)];
   assert.deepEqual(quotesToPay(e, vendors).map((q) => q.vendorId), ["venue-casa-verde", "cater-la-mesa", "decor-flor"]);
 });
+
+test("STOP from the host stops texts; HELP and PLANNER answer; strangers get nothing", async () => {
+  const { onInboundText, store } = await load();
+  const e = await store.createEvent("+15557770000");
+  assert.equal(await onInboundText("+15550001111", "STOP"), "new_request"); // stranger: unknown number, no event touched
+  assert.equal(await onInboundText("+1 (555) 777-0000", "help"), "help");
+  assert.equal(await onInboundText("+15557770000", "Planner"), "planner");
+  assert.equal(await onInboundText("+15557770000", "STOP"), "stop");
+  const after = (await store.getEvent(e.id))!;
+  assert.equal(after.textsStopped, true);
+  assert.equal(after.humanTasks.filter((t) => t.to === "planner").length, 1);
+  const out = after.messages.filter((m) => m.direction === "out");
+  assert.equal(out.length, 3, "help, planner, stop confirmation");
+  assert.ok(out[0].body.startsWith("This is Mela, an AI planning assistant."), "first text introduces Mela");
+  assert.ok(!out[1].body.startsWith("This is Mela, an AI planning"), "intro only once");
+  const { sendText } = await import("@/agents/lead");
+  const { channel } = await import("@/lib/events");
+  await sendText(after, channel, after.hostPhone, "anything");
+  assert.equal(after.messages.filter((m) => m.direction === "out").length, 3, "nothing sent after STOP");
+});

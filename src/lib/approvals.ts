@@ -22,9 +22,10 @@ export function parseReply(body: string): { verb: "YES" | "NO" | null; code: str
 export type ReplyOutcome = "approved" | "declined" | "expired" | "wrong_sender" | "no_code" | "unknown_code" | "already_answered";
 
 const digits = (s: string) => s.replace(/\D/g, "");
+export const isHostNumber = (from: string, hostPhone: string) => digits(from) === digits(hostPhone);
 
 export function applyReply(event: Event, from: string, body: string, now: Date): { outcome: ReplyOutcome; approval?: Approval } {
-  if (digits(from) !== digits(event.hostPhone)) return { outcome: "wrong_sender" };
+  if (!isHostNumber(from, event.hostPhone)) return { outcome: "wrong_sender" };
   const { verb, code } = parseReply(body);
   if (!verb || !code) return { outcome: "no_code" };
   const approval = event.approvals.find((a) => a.code === code && a.status === "pending") ?? event.approvals.find((a) => a.code === code);

@@ -7,10 +7,10 @@ import { DISCLOSURE } from "@/agents/outreach";
 import { isPastApproval, leadSpec, makeLeadTools, quotesToPay, sendText, setStatus, type LeadContext } from "@/agents/lead";
 export { advanceStatus, quotesToPay } from "@/agents/lead";
 import { store } from "@/lib/store";
-import { applyReply, parseReply, type ReplyOutcome } from "@/lib/approvals";
+import { applyReply, isHostNumber, parseReply, type ReplyOutcome } from "@/lib/approvals";
 import { amountToPayCents } from "@/lib/rules";
 import { payVendor } from "@/lib/payments";
-import { allDoneText, declinedText, expiredText, paymentText, vendorConfirmText, vendorQuoteText } from "@/lib/notify";
+import { allDoneText, approvedText, declinedText, expiredText, helpText, paymentRefusedText, paymentText, plannerText, stopText, unknownCodeText, vendorConfirmText, vendorQuoteText } from "@/lib/notify";
 import { getChannel } from "@/integrations/channel";
 import { getPayAdapter } from "@/integrations/pay";
 import type { CallKind, CallScript, Event, EventBrief } from "@/lib/types";
@@ -67,8 +67,8 @@ async function intakeStep(event: Event, text: string) {
   return event;
 }
 
-export async function createEvent(text: string, hostPhone: string): Promise<Event> {
-  return intakeStep(await store.createEvent(hostPhone), text);
+export async function createEvent(text: string, hostPhone: string, hostName?: string): Promise<Event> {
+  return intakeStep(await store.createEvent(hostPhone, hostName), text);
 }
 
 export async function answerEvent(id: string, text: string): Promise<Event> {
@@ -150,7 +150,7 @@ async function runPayments(event: Event) {
     const vendor = vendors.find((v) => v.id === q.vendorId)!;
     // payVendor mutates and saves this same event object; do not reload between vendors
     const r = await payVendor(event, store, getPayAdapter(), vendor.id, amountToPayCents(q.extract), new Date());
-    if (!r.ok) { await sendText(event, channel, event.hostPhone, `Payment to ${vendor.name} was not made (${r.refusal}).`); continue; }
+    if (!r.ok) { await sendText(event, channel, event.hostPhone, paymentRefusedText(vendor, r.refusal)); continue; }
     await sendText(event, channel, event.hostPhone, paymentText(vendor, r.payment));
     if (r.payment.status === "succeeded") await sendText(event, channel, vendor.phone, vendorConfirmText(vendor, event, r.payment));
   }
@@ -159,7 +159,10 @@ async function runPayments(event: Event) {
   await placeHostCall(event, "host_final", { opening: DISCLOSURE, questions: [], closing: allDoneText(event) + " Thank you.", mustNotAgreeTo: [] });
 }
 
-export async function onInboundText(from: string, body: string): Promise<ReplyOutcome | "new_request"> {
+const KEYWORDS = { stop: "stop", unsubscribe: "stop", cancel: "stop", help: "help", planner: "planner" } as const;
+export type InboundOutcome = ReplyOutcome | "new_request" | "stop" | "help" | "planner";
+
+export async function onInboundText(from: string, body: string): Promise<InboundOutcome> {
   const code = parseReply(body).code;
   // a non-host sender is found by the code they quote, so they get wrong_sender instead of starting a new event
   const found = (await store.findEventByHostPhone(from)) ?? (code ? await store.findEventByPendingCode(code) : null);
@@ -168,9 +171,20 @@ export async function onInboundText(from: string, body: string): Promise<ReplyOu
   await waitLock(found.id);
   try {
     const event = await load(found.id);
+    // STOP / HELP / PLANNER come first and only count from the host's own number.
+    const keyword = KEYWORDS[body.trim().toLowerCase().replace(/[^a-z]/g, "") as keyof typeof KEYWORDS];
+    if (keyword && isHostNumber(from, event.hostPhone)) {
+      audit(event, "inbound_keyword", keyword);
+      if (keyword === "stop") { await sendText(event, channel, event.hostPhone, stopText()); event.textsStopped = true; }
+      else if (keyword === "help") await sendText(event, channel, event.hostPhone, helpText());
+      else { planner(event, "Host asked for a person by text", body.slice(0, 200)); await sendText(event, channel, event.hostPhone, plannerText()); }
+      await store.saveEvent(event);
+      return keyword;
+    }
     const { outcome } = applyReply(event, from, body, new Date());
     audit(event, "inbound_reply", outcome);
-    if (outcome === "approved") { setStatus(event, "approved"); await runPayments(event); }
+    if (outcome === "approved") { await sendText(event, channel, event.hostPhone, approvedText()); setStatus(event, "approved"); await runPayments(event); }
+    else if (outcome === "unknown_code") await sendText(event, channel, event.hostPhone, unknownCodeText());
     else if (outcome === "declined") { await sendText(event, channel, event.hostPhone, declinedText()); setStatus(event, "needs_planner"); }
     else if (outcome === "expired") { await sendText(event, channel, event.hostPhone, expiredText()); next = "approval expired"; }
     else if (outcome === "no_code") next = "host said: " + fence("host_message", body);

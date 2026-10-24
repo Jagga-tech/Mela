@@ -5,13 +5,13 @@ import { redact } from "@/agents/harness";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const Body = z.object({ text: z.string().min(1), hostPhone: z.string().min(1) });
+const Body = z.object({ text: z.string().min(1), hostPhone: z.string().min(1), hostName: z.string().trim().min(1).max(100).optional() });
 
 export async function POST(req: Request) {
   const p = Body.safeParse(await req.json().catch(() => null));
   if (!p.success) return Response.json({ error: "text and hostPhone are required" }, { status: 400 });
   try {
-    const e = await createEvent(p.data.text, p.data.hostPhone);
+    const e = await createEvent(p.data.text, p.data.hostPhone, p.data.hostName);
     return Response.json({ eventId: e.id, brief: e.brief, missing: e.missing }, { status: 201 });
   } catch (err) {
     console.error(redact(String(err)));
