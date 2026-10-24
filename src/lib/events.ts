@@ -46,7 +46,7 @@ export function markCallEnded(event: Event, callId: string, transcript: string):
 }
 
 async function placeHostCall(event: Event, kind: Exclude<CallKind, "vendor">, script: CallScript) {
-  const { callId, providerCallId } = await channel.callHost(event.id, kind, script);
+  const { callId, providerCallId } = await channel.callHost(event.id, kind, script, event.audit);
   event.calls.push({ id: callId, providerCallId, eventId: event.id, kind, script, status: "placed", startedAt: new Date().toISOString() });
   await store.saveEvent(event); // persist before the call-ended webhook looks the call up
 }

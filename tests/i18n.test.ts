@@ -50,3 +50,10 @@ test("translate re-inserts dropped YES/NO code tokens", async () => {
   const out = await translate("Reply YES 4821 or NO 4821", "vi", [], reply("Trả lời có hoặc không"));
   assert.equal(out, "Trả lời có hoặc không (YES 4821 / NO 4821)");
 });
+
+test("translate timeout returns the English text and audits translate_failed", async () => {
+  const audit: AuditEvent[] = [];
+  const hang: Send = () => new Promise(() => {});
+  assert.equal(await translate("Reply YES 9999 later", "vi", audit, hang, 10), "Reply YES 9999 later");
+  assert.ok(audit.some((a) => a.action === "translate_failed" && /timeout/.test(a.detail ?? "")));
+});

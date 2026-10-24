@@ -22,6 +22,12 @@ export type Store = {
 };
 type Data = { events: Record<string, Event>; keys: string[]; risks?: Record<string, VendorRisk> };
 
+// events saved before the finance records and the language field existed
+const withDefaults = (e: Event | null): Event | null => {
+  if (e) { e.purchaseOrders ??= []; e.invoices ??= []; e.financeExceptions ??= []; e.language ??= "en"; }
+  return e;
+};
+
 export function fileStore(path = process.env.MELA_STORE ?? "data/store.json"): Store {
   const seed: Seed = JSON.parse(readFileSync(join(process.cwd(), "data/seed.json"), "utf8"));
   // VENDOR_PHONE_<vendorId> points a seed vendor at a real phone for the live demo
@@ -42,20 +48,16 @@ export function fileStore(path = process.env.MELA_STORE ?? "data/store.json"): S
       return e;
     },
     async getEvent(id) {
-      const e = read().events[id];
-      if (!e) return null;
-      // events saved before the finance records existed
-      e.purchaseOrders ??= []; e.invoices ??= []; e.financeExceptions ??= []; e.language ??= "en";
-      return e;
+      return withDefaults(read().events[id] ?? null);
     },
     async saveEvent(e) { const d = read(); e.updatedAt = new Date().toISOString(); d.events[e.id] = e; write(d); },
-    async findEventByCallId(callId) { return events().find(e => e.calls.some(c => c.id === callId)) ?? null; },
+    async findEventByCallId(callId) { return withDefaults(events().find(e => e.calls.some(c => c.id === callId)) ?? null); },
     async findEventByHostPhone(phone) {
       // >= so ties go to the later-inserted event
-      return events().filter(e => isFromHost(phone, e.hostPhone))
-        .reduce<Event | null>((best, e) => !best || e.updatedAt >= best.updatedAt ? e : best, null);
+      return withDefaults(events().filter(e => isFromHost(phone, e.hostPhone))
+        .reduce<Event | null>((best, e) => !best || e.updatedAt >= best.updatedAt ? e : best, null));
     },
-    async findEventByPendingCode(code) { return events().find(e => e.approvals.some(a => a.status === "pending" && a.code === code)) ?? null; },
+    async findEventByPendingCode(code) { return withDefaults(events().find(e => e.approvals.some(a => a.status === "pending" && a.code === code)) ?? null); },
     async listVendors(category) { return seed.vendors.filter(v => !category || v.category === category); },
     async getVendor(id) { return seed.vendors.find(v => v.id === id) ?? null; },
     async claimIdempotencyKey(key) {

@@ -26,7 +26,7 @@ const OutputSchema: z.ZodType<IntakeOutput> = z.object({
     }),
   ),
   changes: z.array(z.string()),
-  language: z.enum(LANGUAGES),
+  language: z.enum(LANGUAGES).catch("en"),
 });
 
 export const intakeSpec: AgentSpec<IntakeOutput> = {

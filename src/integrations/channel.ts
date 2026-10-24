@@ -1,12 +1,13 @@
 import type { Store } from "@/lib/store";
-import type { CallScript } from "@/lib/types";
+import type { AuditEvent, CallScript } from "@/lib/types";
 import { cartesiaCalls } from "@/integrations/cartesia";
 import { sendText } from "@/integrations/imessage";
 
 export type OnCallEnded = (callId: string, transcript: string) => Promise<void>;
 export type Channel = {
-  callHost(eventId: string, kind: "host_confirm" | "host_final", script: CallScript): Promise<{ callId: string; providerCallId?: string }>;
-  callVendor(eventId: string, vendorId: string, script: CallScript): Promise<{ callId: string; providerCallId?: string }>;
+  // audit: the caller's event.audit, so per-call notes (language fallback, translation failures) survive its next save
+  callHost(eventId: string, kind: "host_confirm" | "host_final", script: CallScript, audit?: AuditEvent[]): Promise<{ callId: string; providerCallId?: string }>;
+  callVendor(eventId: string, vendorId: string, script: CallScript, audit?: AuditEvent[]): Promise<{ callId: string; providerCallId?: string }>;
   text(to: string, body: string): Promise<void>;
 };
 

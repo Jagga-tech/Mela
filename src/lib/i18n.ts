@@ -24,11 +24,11 @@ export const NO_WORDS: readonly string[] = [
   "không", "khong",
 ].map(norm);
 
-// ponytail: native-speaker check pending (hi, pa, vi)
+// ponytail: native-speaker check pending (hi, pa, vi); hi/pa phrased gender-neutral (no first-person verb forms)
 export const DISCLOSURES: Record<Language, string> = {
   en: "Hi, this is Mela, an AI assistant calling on behalf of a client. This call is recorded and transcribed. Is now a good time?",
-  hi: "नमस्ते, मैं मेला हूँ, एक AI सहायक, और एक क्लाइंट की ओर से कॉल कर रही हूँ। यह कॉल रिकॉर्ड और ट्रांसक्राइब की जा रही है। क्या अभी बात करने का सही समय है?",
-  pa: "ਸਤ ਸ੍ਰੀ ਅਕਾਲ, ਮੈਂ ਮੇਲਾ ਹਾਂ, ਇੱਕ AI ਸਹਾਇਕ, ਅਤੇ ਇੱਕ ਕਲਾਇੰਟ ਵੱਲੋਂ ਕਾਲ ਕਰ ਰਹੀ ਹਾਂ। ਇਹ ਕਾਲ ਰਿਕਾਰਡ ਅਤੇ ਟ੍ਰਾਂਸਕ੍ਰਾਈਬ ਕੀਤੀ ਜਾ ਰਹੀ ਹੈ। ਕੀ ਹੁਣ ਗੱਲ ਕਰਨ ਦਾ ਠੀਕ ਸਮਾਂ ਹੈ?",
+  hi: "नमस्ते, मैं Mela हूँ, एक AI सहायक। यह कॉल एक क्लाइंट की ओर से है। यह कॉल रिकॉर्ड और ट्रांसक्राइब की जा रही है। क्या अभी बात करना ठीक है?",
+  pa: "ਸਤ ਸ੍ਰੀ ਅਕਾਲ, ਮੈਂ Mela ਹਾਂ, ਇੱਕ AI ਸਹਾਇਕ। ਇਹ ਕਾਲ ਇੱਕ ਕਲਾਇੰਟ ਵੱਲੋਂ ਹੈ। ਇਹ ਕਾਲ ਰਿਕਾਰਡ ਅਤੇ ਟ੍ਰਾਂਸਕ੍ਰਾਈਬ ਕੀਤੀ ਜਾ ਰਹੀ ਹੈ। ਕੀ ਹੁਣ ਗੱਲ ਕਰਨਾ ਠੀਕ ਹੈ?",
   vi: "Xin chào, tôi là Mela, trợ lý AI gọi thay mặt cho một khách hàng. Cuộc gọi này được ghi âm và chép lại thành văn bản. Bây giờ có tiện nói chuyện không ạ?",
 };
 

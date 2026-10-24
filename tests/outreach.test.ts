@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ensureDisclosure, DISCLOSURE } from "../src/agents/outreach";
+import { ensureDisclosure, DISCLOSURE, outreachSpec } from "../src/agents/outreach";
 import { DISCLOSURES } from "../src/lib/i18n";
 import type { CallScript } from "../src/lib/types";
 
@@ -19,9 +19,8 @@ test("ensureDisclosure", () => {
   assert.equal(ensureDisclosure({ ...script, opening: "" }).opening, DISCLOSURE);
 });
 
-test("ensureDisclosure uses the callee's language", () => {
+test("scripts are English-native: Outreach never asks for another language", () => {
   assert.equal(DISCLOSURE, DISCLOSURES.en);
-  assert.equal(ensureDisclosure(script, "hi").opening, `${DISCLOSURES.hi} Hello`);
-  const ok = { ...script, opening: `${DISCLOSURES.hi} नमस्ते` };
-  assert.equal(ensureDisclosure(ok, "hi").opening, ok.opening);
+  assert.ok(!/whole script in|English|Hindi|Punjabi|Vietnamese/i.test(outreachSpec.system));
+  assert.equal(ensureDisclosure.length, 1);
 });

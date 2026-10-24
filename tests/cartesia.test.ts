@@ -1,7 +1,10 @@
 import { test, mock } from "node:test"; import assert from "node:assert/strict";
-import { cartesiaClient, cartesiaCalls, finalTranscript, pollUntilEnded, scriptVariables, transcriptText, type CartesiaClient } from "@/integrations/cartesia";
+import type { BetaMessage } from "@anthropic-ai/sdk/resources/beta/messages/messages";
+import { agentConfig, agentIdFor, cartesiaClient, cartesiaCalls, finalTranscript, localizedOpening, pollUntilEnded, scriptVariables, transcriptText, type CartesiaClient } from "@/integrations/cartesia";
+import type { Send } from "@/agents/harness";
+import { DISCLOSURES } from "@/lib/i18n";
 import type { Store } from "@/lib/store";
-import type { CallScript } from "@/lib/types";
+import type { AuditEvent, CallScript, Event } from "@/lib/types";
 
 const env = { CARTESIA_API_KEY: "k" } as unknown as NodeJS.ProcessEnv;
 const script: CallScript = { opening: "Hi", questions: ["Free on May 3?", "Price?"], closing: "Thanks", mustNotAgreeTo: ["deposits", "contracts"] };
@@ -40,7 +43,9 @@ test("placeCall throws calls[0].error and non-2xx", async () => {
 
 test("scriptVariables joins questions and rules", () => {
   assert.deepEqual(scriptVariables("vendor", script, "m1"), { call_kind: "vendor", opening: "Hi", questions: "Free on May 3? | Price?",
-    closing: "Thanks", must_not_agree_to: "deposits, contracts", mela_call_id: "m1" });
+    closing: "Thanks", must_not_agree_to: "deposits, contracts", mela_call_id: "m1", language: "English" });
+  assert.equal(scriptVariables("vendor", script, "m1", "Xin chào", "vi").opening, "Xin chào");
+  assert.equal(scriptVariables("vendor", script, "m1", "Xin chào", "vi").language, "Vietnamese");
 });
 
 test("transcriptText and finalTranscript", () => {
@@ -76,7 +81,8 @@ test("pollUntilEnded gives up after maxMs", async () => {
 });
 
 test("cartesiaCalls places a vendor call and reports the transcript", async () => {
-  const store = { getVendor: async () => ({ phone: "(555) 000-0001" }) } as unknown as Store;
+  const store = { getVendor: async () => ({ phone: "(555) 000-0001", language: "en" }),
+    getEvent: async () => ({ id: "e1", audit: [] }), saveEvent: async () => {} } as unknown as Store;
   const placed: unknown[] = [];
   const client = { placeCall: async (a: unknown) => { placed.push(a); return { agentCallId: "ac_1" }; },
     getCall: async () => ({ status: "completed", endReason: null, transcript: lines }) } as unknown as CartesiaClient;
@@ -96,4 +102,70 @@ test("cartesiaCalls places a vendor call and reports the transcript", async () =
     delete process.env.CARTESIA_AGENT_ID; delete process.env.CARTESIA_PHONE_NUMBER_ID;
   }
   await assert.rejects(cartesiaCalls(async () => {}, store, client).callVendor("e1", "v1", script), /run npm run cartesia:setup/);
+});
+
+const reply = (text: string): Send => async () =>
+  ({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify({ text }) }] }) as unknown as BetaMessage;
+
+test("agentConfig sets the language and tells non-English agents to speak only it", () => {
+  const hi = agentConfig("v1", "hi") as { language: { primary: string }; instructions: string; initial_message: string };
+  assert.equal(hi.language.primary, "hi");
+  assert.ok(hi.instructions.startsWith("You speak only Hindi"));
+  assert.equal(hi.initial_message, "{{opening}}");
+  const en = agentConfig("v1", "en") as { language: { primary: string }; instructions: string };
+  assert.equal(en.language.primary, "en");
+  assert.ok(!en.instructions.includes("You speak only"));
+});
+
+test("agentIdFor picks the language agent or falls back to English", () => {
+  const e = (o: Record<string, string>) => o as unknown as NodeJS.ProcessEnv;
+  assert.deepEqual(agentIdFor("vi", e({ CARTESIA_AGENT_ID: "a_en" })), { id: "a_en", fallback: true });
+  assert.deepEqual(agentIdFor("vi", e({ CARTESIA_AGENT_ID: "a_en", CARTESIA_AGENT_ID_VI: "a_vi" })), { id: "a_vi", fallback: false });
+  assert.deepEqual(agentIdFor("en", e({ CARTESIA_AGENT_ID_EN: "a_en2", CARTESIA_AGENT_ID: "a_en" })), { id: "a_en2", fallback: false });
+  assert.deepEqual(agentIdFor("en", e({ CARTESIA_AGENT_ID: "a_en" })), { id: "a_en", fallback: false });
+  assert.throws(() => agentIdFor("en", e({})), /run npm run cartesia:setup/);
+});
+
+test("localizedOpening: en unchanged without translating; hi gets the Hindi disclosure plus the translated rest", async () => {
+  let calls = 0;
+  const never: Send = async (...a) => { calls++; return reply("?")(...a); };
+  const s = { ...script, opening: `${DISCLOSURES.en} I'm calling about a party on May 3.` };
+  assert.equal(await localizedOpening(s, "en", [], never), s.opening);
+  assert.equal(calls, 0);
+  assert.equal(await localizedOpening(s, "hi", [], reply("मैं 3 मई की पार्टी के बारे में कॉल कर रहा हूँ।")),
+    `${DISCLOSURES.hi} मैं 3 मई की पार्टी के बारे में कॉल कर रहा हूँ।`);
+  assert.equal(await localizedOpening({ ...script, opening: DISCLOSURES.en }, "pa", [], never), DISCLOSURES.pa);
+  assert.equal(await localizedOpening({ ...script, opening: DISCLOSURES.pa }, "pa", [], never), DISCLOSURES.pa);
+  assert.equal(calls, 0);
+});
+
+test("cartesiaCalls: a vi vendor with only the English agent falls back, audits, and keeps English questions", async () => {
+  const event = { id: "e1", audit: [] as AuditEvent[] } as unknown as Event;
+  const saved: Event[] = [];
+  const store = { getVendor: async () => ({ phone: "(555) 000-0002", language: "vi" }), getEvent: async () => event,
+    saveEvent: async (e: Event) => { saved.push(e); } } as unknown as Store;
+  const placed: { agentId: string; variables: Record<string, string> }[] = [];
+  const client = { placeCall: async (a: (typeof placed)[0]) => { placed.push(a); return { agentCallId: "ac_2" }; },
+    getCall: async () => ({ status: "started", endReason: null, transcript: null }) } as unknown as CartesiaClient;
+  Object.assign(process.env, { CARTESIA_AGENT_ID: "agent_en", CARTESIA_PHONE_NUMBER_ID: "ap_1" });
+  delete process.env.CARTESIA_AGENT_ID_VI;
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    await cartesiaCalls(async () => {}, store, client, reply("Tôi gọi về bữa tiệc.")).callVendor("e1", "v2",
+      { ...script, opening: `${DISCLOSURES.en} I'm calling about a party.` });
+    assert.equal(placed[0].agentId, "agent_en");
+    assert.equal(placed[0].variables.language, "Vietnamese");
+    assert.equal(placed[0].variables.questions, "Free on May 3? | Price?");
+    assert.equal(placed[0].variables.opening, `${DISCLOSURES.vi} Tôi gọi về bữa tiệc.`);
+    assert.ok(event.audit.some((a) => a.action === "agent_language_fallback" && a.detail === "vi"));
+    assert.equal(saved.length, 1);
+    // a caller-held audit array is used instead of loading and saving the event
+    const audit: AuditEvent[] = [];
+    await cartesiaCalls(async () => {}, store, client, reply("x")).callVendor("e1", "v2", script, audit);
+    assert.ok(audit.some((a) => a.action === "agent_language_fallback"));
+    assert.equal(saved.length, 1);
+  } finally {
+    mock.timers.reset();
+    delete process.env.CARTESIA_AGENT_ID; delete process.env.CARTESIA_PHONE_NUMBER_ID;
+  }
 });
