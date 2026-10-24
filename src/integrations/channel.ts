@@ -5,8 +5,8 @@ import { sendText } from "@/integrations/imessage";
 
 export type OnCallEnded = (callId: string, transcript: string) => Promise<void>;
 export type Channel = {
-  callHost(eventId: string, kind: "host_confirm" | "host_final", script: CallScript): Promise<{ callId: string }>;
-  callVendor(eventId: string, vendorId: string, script: CallScript): Promise<{ callId: string }>;
+  callHost(eventId: string, kind: "host_confirm" | "host_final", script: CallScript): Promise<{ callId: string; providerCallId?: string }>;
+  callVendor(eventId: string, vendorId: string, script: CallScript): Promise<{ callId: string; providerCallId?: string }>;
   text(to: string, body: string): Promise<void>;
 };
 

@@ -68,7 +68,7 @@ export type MissingField = { field: keyof EventBrief; question: string };
 export type CallScript = { opening: string; questions: string[]; closing: string; mustNotAgreeTo: string[] };
 export type CallKind = "host_confirm" | "vendor" | "host_final";
 export type CallRecord = { id: string; eventId: string; kind: CallKind; vendorId?: string; script: CallScript;
-  status: "placed" | "ended" | "failed"; transcript?: string; startedAt: string; endedAt?: string };
+  status: "placed" | "ended" | "failed"; providerCallId?: string; transcript?: string; startedAt: string; endedAt?: string };
 export type QuoteExtract = { available: boolean | null; priceUsd: number | null; depositUsd: number | null;
   terms: string[]; evidence: { field: string; line: string }[]; openQuestions: string[] };
 export type VendorQuote = { vendorId: string; callId: string; extract: QuoteExtract; createdAt: string };

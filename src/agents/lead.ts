@@ -135,8 +135,8 @@ export function makeLeadTools(ctx: LeadContext): BetaRunnableTool<any>[] { // es
         const script = await buildCallScript(vendor, event.brief, questions, ctx.audit);
         if (!script.ok) return refuse("call_vendor", "script failed: " + script.reason);
         if (!(await store.claimIdempotencyKey(`${event.id}:call_vendor:${vendorId}`))) return refuse("call_vendor", "duplicate call");
-        const { callId } = await channel.callVendor(event.id, vendorId, script.data);
-        event.calls.push({ id: callId, eventId: event.id, kind: "vendor", vendorId, script: script.data, status: "placed", startedAt: new Date().toISOString() });
+        const { callId, providerCallId } = await channel.callVendor(event.id, vendorId, script.data);
+        event.calls.push({ id: callId, providerCallId, eventId: event.id, kind: "vendor", vendorId, script: script.data, status: "placed", startedAt: new Date().toISOString() });
         setStatus(event, "calling");
         await store.saveEvent(event); // persist before the call-ended webhook looks the call up
         ctx.ended = true;
