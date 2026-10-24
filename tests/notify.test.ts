@@ -36,19 +36,18 @@ test("vendorQuoteText null price / unavailable / no date", () => {
 
 test("vendorConfirmText branches", () => {
   const ev = { brief } as unknown as Event;
-  const p = { id: "p", amountCents: 50000, status: "succeeded", simulated: true } as Payment;
-  assert.ok(vendorConfirmText(v("a", "Casa Verde"), ev, p, true).includes("Deposit $500 sent (simulated)."));
-  assert.ok(vendorConfirmText(v("a", "Casa Verde"), ev, { ...p, simulated: false }, true).includes("(Stripe test mode)"));
+  const p = { id: "p", amountCents: 50000, status: "succeeded" } as Payment;
+  assert.ok(vendorConfirmText(v("a", "Casa Verde"), ev, p, true).includes("Deposit $500 sent (Stripe test mode)."));
   const pend = vendorConfirmText(v("a", "Casa Verde"), ev, { ...p, status: "pending" }, true);
   assert.ok(pend.includes("Payment pending.") && !pend.includes("sent"));
 });
 
 test("deposit vs full price labels", () => {
   const ev = { brief } as unknown as Event;
-  const p = { id: "p", ref: "SIM-1", amountCents: 90000, status: "succeeded", simulated: true } as Payment;
-  assert.equal(paymentText(v("c", "Flor Decor"), p, false), "Paid $900 (full price) to Flor Decor (simulated). Ref SIM-1");
+  const p = { id: "p", ref: "pi_1", amountCents: 90000, status: "succeeded" } as Payment;
+  assert.equal(paymentText(v("c", "Flor Decor"), p, false), "Paid $900 (full price) to Flor Decor (Stripe test mode). Ref pi_1");
   assert.ok(paymentText(v("a", "Casa Verde"), { ...p, amountCents: 50000 }, true).startsWith("Paid $500 deposit to Casa Verde"));
-  assert.ok(vendorConfirmText(v("c", "Flor Decor"), ev, p, false).includes("Full price $900 sent (simulated)."));
+  assert.ok(vendorConfirmText(v("c", "Flor Decor"), ev, p, false).includes("Full price $900 sent (Stripe test mode)."));
 });
 
 test("summary says what is charged now", () => {
@@ -60,8 +59,7 @@ test("summary says what is charged now", () => {
     .includes("Charging now: $500 deposit (Casa Verde), $1,485 deposit (La Mesa), $900 full price (Flor Decor)."));
 });
 
-test("allDoneText says simulated or Stripe test mode", () => {
-  const p = { status: "succeeded", simulated: true } as Payment;
-  assert.ok(allDoneText({ payments: [p, p] } as unknown as Event).endsWith("(simulated payments)"));
-  assert.ok(allDoneText({ payments: [p, { ...p, simulated: false }] } as unknown as Event).endsWith("(Stripe test mode)"));
+test("allDoneText counts bookings and says Stripe test mode", () => {
+  const p = { status: "succeeded" } as Payment;
+  assert.equal(allDoneText({ payments: [p, p] } as unknown as Event), "All set. 2 vendors booked. Confirmations above. (Stripe test mode)");
 });

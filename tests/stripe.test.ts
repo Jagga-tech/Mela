@@ -7,7 +7,7 @@ const fakeFetch = (status: number, json: unknown, seen: { url?: string; init?: R
 test("stripe adapter sends amount and idempotency key, returns the intent id", async () => {
   const seen: { url?: string; init?: RequestInit } = {};
   const r = await stripePay("sk_test_x", fakeFetch(200, { id: "pi_123", status: "succeeded" }, seen)).pay({ amountCents: 50000, vendorId: "v1", idempotencyKey: "e1:pay:v1" });
-  assert.deepEqual(r, { ref: "pi_123", simulated: false });
+  assert.deepEqual(r, { ref: "pi_123" });
   assert.equal(seen.url, "https://api.stripe.com/v1/payment_intents");
   assert.equal((seen.init!.headers as Record<string, string>)["Idempotency-Key"], "e1:pay:v1");
   const body = seen.init!.body as URLSearchParams;

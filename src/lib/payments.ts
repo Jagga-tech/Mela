@@ -22,12 +22,12 @@ export async function payVendor(event: Event, store: Store, pay: PayAdapter, ven
   if (!(await store.claimIdempotencyKey(idempotencyKey))) return refuse("duplicate");
 
   const payment: Payment = { id: randomUUID(), eventId: event.id, mandateId: m.id, vendorId, amountCents, idempotencyKey,
-    status: "pending", simulated: !process.env.STRIPE_SECRET_KEY, createdAt: now.toISOString() };
+    status: "pending", createdAt: now.toISOString() };
   event.payments.push(payment);
   await store.saveEvent(event);
   try {
     const r = await pay.pay({ amountCents, vendorId, idempotencyKey });
-    payment.status = "succeeded"; payment.ref = r.ref; payment.simulated = r.simulated;
+    payment.status = "succeeded"; payment.ref = r.ref;
     m.spentCents += amountCents;
     audit("payment_succeeded", `${vendorId} ${amountCents} ${r.ref}`);
   } catch (err) {

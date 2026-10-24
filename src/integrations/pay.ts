@@ -1,10 +1,4 @@
-import { randomBytes } from "node:crypto";
-
-export type PayAdapter = { pay(args: { amountCents: number; vendorId: string; idempotencyKey: string }): Promise<{ ref: string; simulated: boolean }> };
-
-export function simulatedPay(): PayAdapter {
-  return { pay: () => new Promise(res => setImmediate(() => res({ ref: "SIM-" + randomBytes(4).toString("hex"), simulated: true }))) };
-}
+export type PayAdapter = { pay(args: { amountCents: number; vendorId: string; idempotencyKey: string }): Promise<{ ref: string }> };
 
 // Stripe test mode: one PaymentIntent per vendor deposit, charged to Stripe's Visa test card.
 // Our idempotency key is passed straight through, so a retry can never double-charge.
@@ -23,9 +17,12 @@ export function stripePay(secretKey: string, fetchImpl: typeof fetch = fetch): P
       });
       const j = await res.json() as { id?: string; status?: string; error?: { message?: string } };
       if (!res.ok || j.status !== "succeeded") throw new Error(`stripe ${res.status} ${j.error?.message ?? j.status ?? ""}`.trim());
-      return { ref: j.id!, simulated: false };
+      return { ref: j.id! };
     },
   };
 }
 
-export function getPayAdapter(): PayAdapter { return process.env.STRIPE_SECRET_KEY ? stripePay(process.env.STRIPE_SECRET_KEY) : simulatedPay(); }
+export function getPayAdapter(): PayAdapter {
+  if (!process.env.STRIPE_SECRET_KEY) throw new Error("STRIPE_SECRET_KEY is required (test-mode key)");
+  return stripePay(process.env.STRIPE_SECRET_KEY);
+}

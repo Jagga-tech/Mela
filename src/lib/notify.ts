@@ -38,7 +38,7 @@ export const expiredText = () => "That code has expired. I'll send a fresh one."
 // isDeposit: the quote had a deposit, so that is what was charged (see amountToPayCents); otherwise the full price
 export function paymentText(vendor: Vendor, p: Payment, isDeposit: boolean): string {
   return p.status === "succeeded"
-    ? `Paid ${usd(p.amountCents)} ${isDeposit ? "deposit" : "(full price)"} to ${vendor.name} (${p.simulated ? "simulated" : "Stripe test mode"}). Ref ${p.ref ?? p.id}`
+    ? `Paid ${usd(p.amountCents)} ${isDeposit ? "deposit" : "(full price)"} to ${vendor.name} (Stripe test mode). Ref ${p.ref ?? p.id}`
     : `Payment to ${vendor.name} didn't confirm. Nothing was retried; please check.`;
 }
 
@@ -46,12 +46,11 @@ export function vendorConfirmText(vendor: Vendor, event: Event, p: Payment, isDe
   const w = event.brief?.dateWindow;
   const base = `Booking confirmed for ${event.brief?.eventType ?? "your event"}${w ? ` on ${shortDate(w.start)}` : ""} with ${vendor.name}.`;
   return p.status === "succeeded"
-    ? `${base} ${isDeposit ? "Deposit" : "Full price"} ${usd(p.amountCents)} sent (${p.simulated ? "simulated" : "Stripe test mode"}).`
+    ? `${base} ${isDeposit ? "Deposit" : "Full price"} ${usd(p.amountCents)} sent (Stripe test mode).`
     : `${base} Payment pending.`;
 }
 
 export function allDoneText(event: Event): string {
   const n = event.payments.filter((p) => p.status === "succeeded").length;
-  const mode = event.payments.every((p) => p.simulated) ? "simulated payments" : "Stripe test mode";
-  return `All set. ${n} vendor${n === 1 ? "" : "s"} booked. Confirmations above. (${mode})`;
+  return `All set. ${n} vendor${n === 1 ? "" : "s"} booked. Confirmations above. (Stripe test mode)`;
 }

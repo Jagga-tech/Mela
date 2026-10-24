@@ -93,7 +93,7 @@ export type Mandate = { id: string; eventId: string; vendorIds: string[]; capCen
   expiresAt: string; status: "approved" | "paused" | "expired" };
 export type Payment = { id: string; eventId: string; mandateId: string; vendorId: string; amountCents: number;
   idempotencyKey: string; status: "pending" | "succeeded" | "failed" | "unknown"; ref?: string;
-  simulated: boolean; createdAt: string };
+  createdAt: string };
 export type Message = { at: string; direction: "out" | "in"; to: string; body: string };
 export type HumanTask = { id: string; eventId: string; to: "host" | "planner"; question: string; why: string;
   status: "open" | "answered" };
