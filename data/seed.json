@@ -1,0 +1,17 @@
+{
+  "vendors": [
+    { "id": "venue-casa-verde", "name": "Casa Verde", "category": "venue", "phone": "+15550000001", "capacity": 120, "priceHintUsd": 1800, "accessibility": ["step-free"], "dietary": [] },
+    { "id": "cater-la-mesa", "name": "La Mesa Catering", "category": "catering", "phone": "+15550000002", "capacity": null, "priceHintUsd": 4500, "accessibility": [], "dietary": ["vegetarian", "halal"] },
+    { "id": "decor-flor", "name": "Flor Decor", "category": "decor", "phone": "+15550000003", "capacity": null, "priceHintUsd": 900, "accessibility": [], "dietary": [] }
+  ],
+  "transcripts": {
+    "host_confirm": "Agent: Hi, this is Mela confirming your quinceañera plan: 100 guests, San Francisco, budget $12,000. Is that right?\nHost: Yes, that's right, except make it 110 guests, not 100.\nAgent: Got it, 110 guests. Thank you!",
+    "host_final": "Agent: Everything is booked and paid. Your event is all set.\nHost: Wonderful, thanks so much!",
+    "vendors": {
+      "venue-casa-verde": "Agent: Is Casa Verde available on the date, for 110 guests?\nVendor: Yes, we're available. The price is $1,800, with a $500 deposit.",
+      "cater-la-mesa": "Agent: Can La Mesa cater for 110 with vegetarian and halal options?\nVendor: Yes, we're available. It's $45 a head, so $4,950 for 110, 30% deposit.",
+      "decor-flor": "Agent: Is Flor Decor available for the date?\nVendor: Yes, we're available. It's $900, no deposit."
+    }
+  },
+  "mandate": { "capCents": 1200000, "expiresAt": "2026-12-31T23:59:59.000Z" }
+}

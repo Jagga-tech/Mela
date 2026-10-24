@@ -174,15 +174,12 @@ export function toCents(usd: number | null): number | null;      // Math.round(u
 export function amountToPayCents(extract: QuoteExtract): number | null; // deposit if not null, else price, else null
 export function budgetCheck(brief: EventBrief, quotes: VendorQuote[]): { totalCents: number; unknownVendorIds: string[]; budgetCents: number | null; overByCents: number | null };
 // totalCents sums priceUsd of known quotes; unknownVendorIds lists quotes with priceUsd null; overByCents = total - budget when both known and positive, else 0 when under, null when budget unknown
-export function selectForDemo(items: { vendorId: string; fit: FitStatus; category: VendorCategory }[]): string[];
-// one vendorId per category, preferring "fit" over "possible", never "conflict"; categories in order venue, catering, decor
 ```
 
 - [ ] **Step 1: Write the failing test** `tests/rules.test.ts` with these cases:
   - `checkFit`: capacity 120 vs 110 guests, step-free present → `fit`; capacity 80 vs 110 → `conflict` with one conflict string; capacity null → `possible` with one unknown.
   - `amountToPayCents({depositUsd: 500, priceUsd: 1800,...})` → 50000; deposit null, price 900 → 90000; both null → null.
   - `budgetCheck` with quotes 1800, 4950, 900 and budget 12000 → total 765000, overBy 0, unknown []. With one `priceUsd: null` → unknownVendorIds has that id and total excludes it. Budget null → `overByCents` null.
-  - `selectForDemo` with a `conflict` venue and a `fit` venue picks the fit one; returns 3 ids in order venue, catering, decor.
 
 - [ ] **Step 2: Run to see it fail.** `npm test` → cannot find module `@/lib/rules`.
 
@@ -318,7 +315,7 @@ export type Channel = {
   callVendor(eventId: string, vendorId: string, script: CallScript): Promise<{ callId: string }>;
   text(to: string, body: string): Promise<void>;
 };
-export function getChannel(onCallEnded: OnCallEnded, seed: Seed): Channel;
+export function getChannel(onCallEnded: OnCallEnded, store: Store): Channel;   // store.seed feeds the fake; store feeds Task 12's cartesiaCalls
 // composes calls and texts separately: calls from MELA_CALLS ("cartesia" → Task 12's cartesiaCalls, else fake), texts from MELA_TEXT ("imessage" → Task 12's imessage.sendText, else console sink)
 // fakeChannel.ts
 export function fakeChannel(onCallEnded: OnCallEnded, seed: Seed, sink?: (to: string, body: string) => void): Channel;
@@ -466,7 +463,7 @@ export function answerEvent(id: string, text: string): Promise<Event>;          
 export function onCallEnded(callId: string, transcript: string): Promise<void>;
 export function onInboundText(from: string, body: string): Promise<ReplyOutcome | "new_request">;
 export function startLeadRun(eventId: string, trigger: string): Promise<Event>;
-export const channel: Channel;   // getChannel(onCallEnded, store.seed)
+export const channel: Channel;   // getChannel(onCallEnded, store)
 export function _resetLocks(): void;  // test helper
 ```
 
