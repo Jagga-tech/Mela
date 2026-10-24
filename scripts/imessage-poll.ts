@@ -18,7 +18,8 @@ async function main() {
       for (const r of await pollReplies(last)) {
         if (isFromHost(r.from, host)) {
           try {
-            const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ from: r.from, body: r.text }) });
+            const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ from: r.from, body: r.text }), signal: AbortSignal.timeout(10_000) });
+            if (!res.ok) throw new Error(`forward failed ${res.status}: ${(await res.text()).slice(0, 200)}`);
             console.log(`[poll] forwarded ${r.rowId} → ${res.status} ${await res.text()}`);
           } catch (e) {
             console.error(`[poll] forward ${r.rowId} failed, will retry`, String(e));
@@ -33,4 +34,4 @@ async function main() {
     await new Promise((res) => setTimeout(res, 2000));
   }
 }
-main();
+main().catch((e) => { console.error("[poll] failed to start (Full Disk Access for ~/Library/Messages/chat.db?)", String(e)); process.exit(1); });
