@@ -12,6 +12,7 @@ export type Store = {
   saveEvent(e: Event): Promise<void>;
   findEventByCallId(callId: string): Promise<Event | null>;
   findEventByHostPhone(phone: string): Promise<Event | null>;
+  findEventByPendingCode(code: string): Promise<Event | null>;
   listVendors(category?: VendorCategory): Promise<Vendor[]>;
   getVendor(id: string): Promise<Vendor | null>;
   claimIdempotencyKey(key: string): Promise<boolean>;
@@ -46,6 +47,7 @@ export function fileStore(path = process.env.MELA_STORE ?? "data/store.json"): S
       return events().filter(e => digits(e.hostPhone) === digits(phone))
         .reduce<Event | null>((best, e) => !best || e.updatedAt >= best.updatedAt ? e : best, null);
     },
+    async findEventByPendingCode(code) { return events().find(e => e.approvals.some(a => a.status === "pending" && a.code === code)) ?? null; },
     async listVendors(category) { return seed.vendors.filter(v => !category || v.category === category); },
     async getVendor(id) { return seed.vendors.find(v => v.id === id) ?? null; },
     async claimIdempotencyKey(key) {
