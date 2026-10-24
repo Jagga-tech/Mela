@@ -32,7 +32,7 @@ export const expiredText = () => "That code has expired. I'll send a fresh one."
 
 export function paymentText(vendor: Vendor, p: Payment): string {
   return p.status === "succeeded"
-    ? `Paid ${usd(p.amountCents)} deposit to ${vendor.name} (simulated). Ref ${p.ref ?? p.id}`
+    ? `Paid ${usd(p.amountCents)} deposit to ${vendor.name} (${p.simulated ? "simulated" : "Stripe test mode"}). Ref ${p.ref ?? p.id}`
     : `Payment to ${vendor.name} didn't confirm. Nothing was retried; please check.`;
 }
 
@@ -40,7 +40,7 @@ export function vendorConfirmText(vendor: Vendor, event: Event, p: Payment): str
   const w = event.brief?.dateWindow;
   const base = `Booking confirmed for ${event.brief?.eventType ?? "your event"}${w ? ` on ${shortDate(w.start)}` : ""} with ${vendor.name}.`;
   return p.status === "succeeded"
-    ? `${base} Deposit ${usd(p.amountCents)} sent (${p.simulated ? "simulated" : "sandbox"}).`
+    ? `${base} Deposit ${usd(p.amountCents)} sent (${p.simulated ? "simulated" : "Stripe test mode"}).`
     : `${base} Payment pending.`;
 }
 

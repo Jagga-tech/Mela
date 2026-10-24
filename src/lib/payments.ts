@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { Event, Payment } from "@/lib/types";
 import type { Store } from "@/lib/store";
-import type { VisaAdapter } from "@/integrations/visa";
+import type { PayAdapter } from "@/integrations/pay";
 import { redact } from "@/agents/harness";
 
 export type PayRefusal = "no_mandate" | "mandate_not_approved" | "mandate_expired" | "vendor_not_in_mandate" | "over_cap" | "duplicate" | "amount_unknown";
 
-export async function payVendor(event: Event, store: Store, visa: VisaAdapter, vendorId: string, amountCents: number | null, now: Date):
+export async function payVendor(event: Event, store: Store, pay: PayAdapter, vendorId: string, amountCents: number | null, now: Date):
   Promise<{ ok: true; payment: Payment } | { ok: false; refusal: PayRefusal }> {
   const audit = (action: string, detail?: string) =>
     event.audit.push({ at: now.toISOString(), actor: "payments", action, detail });
@@ -26,7 +26,7 @@ export async function payVendor(event: Event, store: Store, visa: VisaAdapter, v
   event.payments.push(payment);
   await store.saveEvent(event);
   try {
-    const r = await visa.pay({ amountCents, vendorId, idempotencyKey });
+    const r = await pay.pay({ amountCents, vendorId, idempotencyKey });
     payment.status = "succeeded"; payment.ref = r.ref; payment.simulated = r.simulated;
     m.spentCents += amountCents;
     audit("payment_succeeded", `${vendorId} ${amountCents} ${r.ref}`);

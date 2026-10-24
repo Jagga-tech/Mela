@@ -38,7 +38,7 @@ test("vendorConfirmText branches", () => {
   const ev = { brief } as unknown as Event;
   const p = { id: "p", amountCents: 50000, status: "succeeded", simulated: true } as Payment;
   assert.ok(vendorConfirmText(v("a", "Casa Verde"), ev, p).includes("Deposit $500 sent (simulated)."));
-  assert.ok(vendorConfirmText(v("a", "Casa Verde"), ev, { ...p, simulated: false }).includes("(sandbox)"));
+  assert.ok(vendorConfirmText(v("a", "Casa Verde"), ev, { ...p, simulated: false }).includes("(Stripe test mode)"));
   const pend = vendorConfirmText(v("a", "Casa Verde"), ev, { ...p, status: "pending" });
   assert.ok(pend.includes("Payment pending.") && !pend.includes("sent"));
 });

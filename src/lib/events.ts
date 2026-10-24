@@ -12,7 +12,7 @@ import { amountToPayCents } from "@/lib/rules";
 import { payVendor } from "@/lib/payments";
 import { allDoneText, declinedText, expiredText, paymentText, vendorConfirmText, vendorQuoteText } from "@/lib/notify";
 import { getChannel } from "@/integrations/channel";
-import { getVisa } from "@/integrations/visa";
+import { getPayAdapter } from "@/integrations/pay";
 import type { CallKind, CallScript, Event, EventBrief } from "@/lib/types";
 
 export const channel = getChannel(onCallEnded, store);
@@ -146,7 +146,7 @@ async function runPayments(event: Event) {
   for (const q of quotesToPay(event, vendors)) {
     const vendor = vendors.find((v) => v.id === q.vendorId)!;
     // payVendor mutates and saves this same event object; do not reload between vendors
-    const r = await payVendor(event, store, getVisa(), vendor.id, amountToPayCents(q.extract), new Date());
+    const r = await payVendor(event, store, getPayAdapter(), vendor.id, amountToPayCents(q.extract), new Date());
     if (!r.ok) { await sendText(event, channel, event.hostPhone, `Payment to ${vendor.name} was not made (${r.refusal}).`); continue; }
     await sendText(event, channel, event.hostPhone, paymentText(vendor, r.payment));
     if (r.payment.status === "succeeded") await sendText(event, channel, vendor.phone, vendorConfirmText(vendor, event, r.payment));
