@@ -27,7 +27,7 @@ export function applyReply(event: Event, from: string, body: string, now: Date):
   if (digits(from) !== digits(event.hostPhone)) return { outcome: "wrong_sender" };
   const { verb, code } = parseReply(body);
   if (!verb || !code) return { outcome: "no_code" };
-  const approval = event.approvals.find((a) => a.code === code);
+  const approval = event.approvals.find((a) => a.code === code && a.status === "pending") ?? event.approvals.find((a) => a.code === code);
   if (!approval) return { outcome: "unknown_code" };
   if (approval.status !== "pending") return { outcome: "already_answered", approval };
   if (now > new Date(approval.expiresAt)) {

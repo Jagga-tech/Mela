@@ -48,3 +48,16 @@ test("applyReply outcomes", () => {
   const c = createApproval(e, "plan", "s", t0);
   assert.equal(applyReply(e, host, `NO ${c.code}`, later(2)).outcome, "declined");
 });
+
+test("applyReply prefers the pending approval over a stale one with the same code", () => {
+  const e = mkEvent();
+  const old = createApproval(e, "plan", "s", t0);
+  old.code = "4821";
+  old.status = "approved";
+  const fresh = createApproval(e, "plan", "s", t0);
+  fresh.code = "4821";
+  const r = applyReply(e, "15550100000", "YES 4821", later(1));
+  assert.equal(r.outcome, "approved");
+  assert.equal(r.approval, fresh);
+  assert.equal(fresh.status, "approved");
+});

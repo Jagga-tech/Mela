@@ -1,4 +1,4 @@
-import type { budgetCheck } from "./rules";
+import { toCents, type budgetCheck } from "./rules";
 import type { Event, EventBrief, Payment, QuoteExtract, Vendor } from "./types";
 
 export const usd = (cents: number): string => {
@@ -12,8 +12,8 @@ export function vendorQuoteText(vendor: Vendor, q: QuoteExtract, brief: EventBri
   if (q.available === false) return `${vendor.name}: not available for your dates.`;
   if (q.priceUsd === null) return `${vendor.name}: price unknown, I'll flag it.`;
   const avail = q.available === null ? "availability unconfirmed" : brief.dateWindow ? `available ${shortDate(brief.dateWindow.start)}` : "available";
-  const deposit = q.depositUsd === null ? "" : `, deposit ${usd(q.depositUsd * 100)}`;
-  return `${vendor.name}: ${avail}, ${usd(q.priceUsd * 100)}${deposit}.`;
+  const deposit = q.depositUsd === null ? "" : `, deposit ${usd(toCents(q.depositUsd) as number)}`;
+  return `${vendor.name}: ${avail}, ${usd(toCents(q.priceUsd) as number)}${deposit}.`;
 }
 
 export function summaryText(lines: { vendor: Vendor; q: QuoteExtract }[], budget: ReturnType<typeof budgetCheck>, code: string, brief: EventBrief): string {
@@ -38,7 +38,10 @@ export function paymentText(vendor: Vendor, p: Payment): string {
 
 export function vendorConfirmText(vendor: Vendor, event: Event, p: Payment): string {
   const w = event.brief?.dateWindow;
-  return `Booking confirmed for ${event.brief?.eventType ?? "your event"}${w ? ` on ${shortDate(w.start)}` : ""} with ${vendor.name}. Deposit ${usd(p.amountCents)} sent (simulated).`;
+  const base = `Booking confirmed for ${event.brief?.eventType ?? "your event"}${w ? ` on ${shortDate(w.start)}` : ""} with ${vendor.name}.`;
+  return p.status === "succeeded"
+    ? `${base} Deposit ${usd(p.amountCents)} sent (${p.simulated ? "simulated" : "sandbox"}).`
+    : `${base} Payment pending.`;
 }
 
 export function allDoneText(event: Event): string {
