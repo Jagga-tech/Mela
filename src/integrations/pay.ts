@@ -1,35 +1,68 @@
 import { randomBytes } from "node:crypto";
 
-export type PayAdapter = { pay(args: { amountCents: number; vendorId: string; idempotencyKey: string }): Promise<{ ref: string; simulated: boolean }> };
+export type PayArgs = { amountCents: number; vendorId: string; vendorName: string; idempotencyKey: string };
+export type PayAdapter = { pay(args: PayArgs): Promise<{ ref: string; simulated: boolean }> };
 
 export function simulatedPay(): PayAdapter {
   return { pay: () => new Promise(res => setImmediate(() => res({ ref: "SIM-" + randomBytes(4).toString("hex"), simulated: true }))) };
 }
 
 // Stripe test mode: one PaymentIntent per vendor deposit, charged to Stripe's Visa test card and
-// routed to the vendor's connected account (STRIPE_ACCT_<vendorId>, created by scripts/stripe-vendors.ts).
+// routed to the vendor's connected account, which the agent creates on first payment and reuses after.
 // Our idempotency key is passed straight through, so a retry can never double-charge.
-export const vendorAccount = (vendorId: string) => process.env[`STRIPE_ACCT_${vendorId}`];
+type StripeFetch = (path: string, init?: { method?: "POST"; body?: URLSearchParams; headers?: Record<string, string> }) => Promise<Record<string, any>>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-export function stripePay(secretKey: string, fetchImpl: typeof fetch = fetch, accountFor = vendorAccount): PayAdapter {
+function stripeApi(secretKey: string, fetchImpl: typeof fetch): StripeFetch {
+  return async (path, init = {}) => {
+    const res = await fetchImpl(`https://api.stripe.com/v1/${path}`, { ...init, signal: AbortSignal.timeout(15000),
+      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/x-www-form-urlencoded", ...init.headers } });
+    const j = await res.json() as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    if (!res.ok) throw new Error(`stripe ${res.status} ${j.error?.message ?? ""}`.trim());
+    return j;
+  };
+}
+
+// STRIPE_ACCT_<vendorId> overrides (e.g. a friend's own Express account); otherwise find by metadata or create.
+// ponytail: lists the first 100 accounts; fine for 3 vendors, switch to a stored id if the roster grows.
+const accountCache = new Map<string, string>();
+export async function ensureVendorAccount(api: StripeFetch, vendorId: string, vendorName: string): Promise<string> {
+  const env = process.env[`STRIPE_ACCT_${vendorId}`]; if (env) return env;
+  const cached = accountCache.get(vendorId); if (cached) return cached;
+  const list = await api("accounts?limit=100");
+  let acct = (list.data as { id: string; metadata?: { vendorId?: string } }[]).find(a => a.metadata?.vendorId === vendorId)?.id;
+  if (!acct) {
+    const [first, ...rest] = vendorName.split(" ");
+    // test-mode Custom account with every field Stripe needs to activate transfers; payouts manual so the balance stays visible
+    acct = (await api("accounts", { method: "POST", body: new URLSearchParams({
+      type: "custom", country: "US", email: `${vendorId}@example.com`, business_type: "individual",
+      "capabilities[transfers][requested]": "true", "business_profile[name]": vendorName, "business_profile[mcc]": "7299",
+      "business_profile[product_description]": "Event vendor (Mela demo)",
+      "tos_acceptance[date]": String(Math.floor(Date.now() / 1000)), "tos_acceptance[ip]": "127.0.0.1", "tos_acceptance[service_agreement]": "recipient",
+      "individual[first_name]": first, "individual[last_name]": rest.join(" ") || "Vendor", "individual[email]": `${vendorId}@example.com`,
+      "individual[phone]": "0000000000", "individual[dob][day]": "1", "individual[dob][month]": "1", "individual[dob][year]": "1901",
+      "individual[ssn_last_4]": "0000", "individual[address][line1]": "address_full_match", "individual[address][city]": "Berkeley",
+      "individual[address][state]": "CA", "individual[address][postal_code]": "94704", "individual[address][country]": "US",
+      "external_account": "btok_us_verified", "settings[payouts][schedule][interval]": "manual", "metadata[vendorId]": vendorId,
+    }) })).id as string;
+  }
+  accountCache.set(vendorId, acct);
+  return acct;
+}
+
+export function stripePay(secretKey: string, fetchImpl: typeof fetch = fetch): PayAdapter {
   if (!/^(sk|rk)_test_/.test(secretKey)) throw new Error("STRIPE_SECRET_KEY must be a test-mode key (sk_test_... or rk_test_...)");
+  const api = stripeApi(secretKey, fetchImpl);
   return {
-    async pay({ amountCents, vendorId, idempotencyKey }) {
-      const destination = accountFor(vendorId);
-      // refuse before any call: a charge that never reaches the vendor must not be reported as sent
-      if (!destination) throw new Error(`no Stripe account for vendor ${vendorId} (set STRIPE_ACCT_${vendorId})`);
+    async pay({ amountCents, vendorId, vendorName, idempotencyKey }) {
+      const destination = await ensureVendorAccount(api, vendorId, vendorName);
       const body = new URLSearchParams({
         amount: String(amountCents), currency: "usd", confirm: "true", payment_method: "pm_card_visa",
         "payment_method_types[]": "card", description: `Mela deposit: ${vendorId}`, "transfer_data[destination]": destination,
         "metadata[vendorId]": vendorId, "metadata[idempotencyKey]": idempotencyKey,
       });
-      const res = await fetchImpl("https://api.stripe.com/v1/payment_intents", {
-        method: "POST", body, signal: AbortSignal.timeout(15000),
-        headers: { Authorization: `Bearer ${secretKey}`, "Idempotency-Key": idempotencyKey, "Content-Type": "application/x-www-form-urlencoded" },
-      });
-      const j = await res.json() as { id?: string; status?: string; error?: { message?: string } };
-      if (!res.ok || j.status !== "succeeded") throw new Error(`stripe ${res.status} ${j.error?.message ?? j.status ?? ""}`.trim());
-      return { ref: j.id!, simulated: false };
+      const j = await api("payment_intents", { method: "POST", body, headers: { "Idempotency-Key": idempotencyKey } });
+      if (j.status !== "succeeded") throw new Error(`stripe intent ${j.status}`);
+      return { ref: j.id as string, simulated: false };
     },
   };
 }

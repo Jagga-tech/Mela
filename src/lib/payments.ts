@@ -26,7 +26,8 @@ export async function payVendor(event: Event, store: Store, pay: PayAdapter, ven
   event.payments.push(payment);
   await store.saveEvent(event);
   try {
-    const r = await pay.pay({ amountCents, vendorId, idempotencyKey });
+    const vendorName = (await store.listVendors()).find(v => v.id === vendorId)?.name ?? vendorId;
+    const r = await pay.pay({ amountCents, vendorId, vendorName, idempotencyKey });
     payment.status = "succeeded"; payment.ref = r.ref; payment.simulated = r.simulated;
     m.spentCents += amountCents;
     audit("payment_succeeded", `${vendorId} ${amountCents} ${r.ref}`);
