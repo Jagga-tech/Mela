@@ -1,7 +1,11 @@
 import { randomBytes } from "node:crypto";
 
 export type PayArgs = { amountCents: number; vendorId: string; vendorName: string; idempotencyKey: string };
-export type PayAdapter = { pay(args: PayArgs): Promise<{ ref: string; simulated: boolean }> };
+export type PayAdapter = {
+  pay(args: PayArgs): Promise<{ ref: string; simulated: boolean }>;
+  // a one-time Stripe onboarding URL to text the vendor, or null when the vendor can already receive deposits
+  onboardingLink?(vendorId: string, vendorName: string): Promise<string | null>;
+};
 
 export function simulatedPay(): PayAdapter {
   return { pay: () => new Promise(res => setImmediate(() => res({ ref: "SIM-" + randomBytes(4).toString("hex"), simulated: true }))) };
@@ -22,37 +26,39 @@ function stripeApi(secretKey: string, fetchImpl: typeof fetch): StripeFetch {
   };
 }
 
-// STRIPE_ACCT_<vendorId> overrides (e.g. a friend's own Express account); otherwise find by metadata or create.
+// STRIPE_ACCT_<vendorId> overrides (a hand-made account); otherwise find by metadata or create an Express
+// account the vendor finishes from a texted link, so they see deposits arrive in the Stripe Express app.
 // ponytail: lists the first 100 accounts; fine for 3 vendors, switch to a stored id if the roster grows.
 const accountCache = new Map<string, string>();
 export async function ensureVendorAccount(api: StripeFetch, vendorId: string, vendorName: string): Promise<string> {
   const env = process.env[`STRIPE_ACCT_${vendorId}`]; if (env) return env;
   const cached = accountCache.get(vendorId); if (cached) return cached;
   const list = await api("accounts?limit=100");
-  let acct = (list.data as { id: string; metadata?: { vendorId?: string } }[]).find(a => a.metadata?.vendorId === vendorId)?.id;
+  let acct = (list.data as { id: string; type: string; metadata?: { vendorId?: string } }[]).find(a => a.type === "express" && a.metadata?.vendorId === vendorId)?.id;
   if (!acct) {
-    const [first, ...rest] = vendorName.split(" ");
-    // test-mode Custom account with every field Stripe needs to activate transfers; payouts manual so the balance stays visible
+    // payouts manual so the balance stays visible in the vendor's Express dashboard
     acct = (await api("accounts", { method: "POST", body: new URLSearchParams({
-      type: "custom", country: "US", email: `${vendorId}@example.com`, business_type: "individual",
-      "capabilities[transfers][requested]": "true", "business_profile[name]": vendorName, "business_profile[mcc]": "7299",
-      "business_profile[product_description]": "Event vendor (Mela demo)",
-      "tos_acceptance[date]": String(Math.floor(Date.now() / 1000)), "tos_acceptance[ip]": "127.0.0.1",
-      "individual[first_name]": first, "individual[last_name]": rest.join(" ") || "Vendor", "individual[email]": `${vendorId}@example.com`,
-      "individual[phone]": "0000000000", "individual[dob][day]": "1", "individual[dob][month]": "1", "individual[dob][year]": "1901",
-      "individual[ssn_last_4]": "0000", "individual[address][line1]": "address_full_match", "individual[address][city]": "Berkeley",
-      "individual[address][state]": "CA", "individual[address][postal_code]": "94704", "individual[address][country]": "US",
-      "external_account": "btok_us_verified", "settings[payouts][schedule][interval]": "manual", "metadata[vendorId]": vendorId,
+      type: "express", country: "US", "capabilities[transfers][requested]": "true", business_type: "individual",
+      "business_profile[name]": vendorName, "business_profile[mcc]": "7299", "business_profile[product_description]": "Event vendor (Mela demo)",
+      "settings[payouts][schedule][interval]": "manual", "metadata[vendorId]": vendorId,
     }) })).id as string;
   }
   accountCache.set(vendorId, acct);
   return acct;
 }
 
+const EXPRESS_LOGIN = "https://connect.stripe.com/express_login"; // ponytail: return/refresh land on Express login; a stale link just needs a new text
+
 export function stripePay(secretKey: string, fetchImpl: typeof fetch = fetch): PayAdapter {
   if (!/^(sk|rk)_test_/.test(secretKey)) throw new Error("STRIPE_SECRET_KEY must be a test-mode key (sk_test_... or rk_test_...)");
   const api = stripeApi(secretKey, fetchImpl);
   return {
+    async onboardingLink(vendorId, vendorName) {
+      const acct = await ensureVendorAccount(api, vendorId, vendorName);
+      if ((await api(`accounts/${acct}`)).capabilities?.transfers === "active") return null;
+      const link = await api("account_links", { method: "POST", body: new URLSearchParams({ account: acct, type: "account_onboarding", refresh_url: EXPRESS_LOGIN, return_url: EXPRESS_LOGIN }) });
+      return link.url as string; // single use, expires in 5 minutes
+    },
     async pay({ amountCents, vendorId, vendorName, idempotencyKey }) {
       const destination = await ensureVendorAccount(api, vendorId, vendorName);
       const body = new URLSearchParams({

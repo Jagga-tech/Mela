@@ -129,6 +129,9 @@ export async function onCallEnded(callId: string, transcript: string): Promise<v
         const extract = r.ok ? r.data : { available: null, priceUsd: null, depositUsd: null, terms: [], evidence: [], openQuestions: ["extraction failed"] };
         event.quotes.push({ vendorId: vendor.id, callId, extract, createdAt: new Date().toISOString() });
         await sendText(event, channel, event.hostPhone, vendorQuoteText(vendor, extract, event.brief!));
+        // Stripe-keyed runs: text the vendor a one-time payout setup link so the deposit can reach them
+        const link = await getPayAdapter().onboardingLink?.(vendor.id, vendor.name).catch((e: unknown) => { audit(event, "vendor_onboarding_link_failed", String(e instanceof Error ? e.message : e)); return null; });
+        if (link) await sendText(event, channel, vendor.phone, `This is Mela, an AI planning assistant, for ${vendor.name}. To receive your deposit, set up payouts with Stripe here (takes a minute, link expires in 5): ${link}`);
       }
       next = "vendor call ended: " + call.vendorId;
     } else setStatus(event, "done");

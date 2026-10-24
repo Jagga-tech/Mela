@@ -19,7 +19,7 @@ test("creates the vendor account once, then routes the deposit to it", async () 
   const r = await stripePay("sk_test_x", f).pay(args);
   assert.deepEqual(r, { ref: "pi_123", simulated: false });
   const created = seen.find(s => s.url.endsWith("/accounts") && s.init?.method === "POST")!.init!.body as URLSearchParams;
-  assert.equal(created.get("metadata[vendorId]"), "v1"); assert.equal(created.get("business_profile[name]"), "Casa Verde");
+  assert.equal(created.get("metadata[vendorId]"), "v1"); assert.equal(created.get("business_profile[name]"), "Casa Verde"); assert.equal(created.get("type"), "express");
   const intent = seen.find(s => s.url.endsWith("/payment_intents"))!;
   assert.equal((intent.init!.headers as Record<string, string>)["Idempotency-Key"], "e1:pay:v1");
   const body = intent.init!.body as URLSearchParams;
@@ -28,9 +28,17 @@ test("creates the vendor account once, then routes the deposit to it", async () 
   seen.length = 0; await stripePay("sk_test_x", f).pay({ ...args, idempotencyKey: "e2:pay:v1" });
   assert.deepEqual(seen.map(s => s.url.split("/v1/")[1]), ["payment_intents"]);
 });
-test("reuses an existing account found by metadata", async () => {
+test("onboarding link: created until transfers are active, then null", async () => {
+  const f = fakeFetch({ "GET accounts": { json: { data: [{ id: "acct_x", type: "express", metadata: { vendorId: "v5" } }] } },
+    "GET accounts/acct_x": { json: { id: "acct_x", capabilities: { transfers: "pending" } } },
+    "POST account_links": { json: { url: "https://connect.stripe.com/setup/abc" } } });
+  assert.equal(await stripePay("sk_test_x", f).onboardingLink!("v5", "Flor"), "https://connect.stripe.com/setup/abc");
+  const g = fakeFetch({ "GET accounts/acct_x": { json: { id: "acct_x", capabilities: { transfers: "active" } } } });
+  assert.equal(await stripePay("sk_test_x", g).onboardingLink!("v5", "Flor"), null);
+});
+test("reuses an existing express account found by metadata", async () => {
   const seen: { url: string; init?: RequestInit }[] = [];
-  const f = fakeFetch({ "GET accounts": { json: { data: [{ id: "acct_old", metadata: { vendorId: "v2" } }] } },
+  const f = fakeFetch({ "GET accounts": { json: { data: [{ id: "acct_custom", type: "custom", metadata: { vendorId: "v2" } }, { id: "acct_old", type: "express", metadata: { vendorId: "v2" } }] } },
     "POST payment_intents": { json: { id: "pi_2", status: "succeeded" } } }, seen);
   await stripePay("sk_test_x", f).pay({ ...args, vendorId: "v2" });
   assert.equal((seen.at(-1)!.init!.body as URLSearchParams).get("transfer_data[destination]"), "acct_old");
