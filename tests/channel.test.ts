@@ -41,7 +41,27 @@ test("getChannel defaults to fake", async () => {
 });
 
 test("ensureDisclosure", () => {
-  assert.equal(ensureDisclosure(script).opening, `${DISCLOSURE} Hello`);
+  const r = ensureDisclosure(script);
+  assert.equal(r.opening, `${DISCLOSURE} Hello`);
+  assert.deepEqual(r.mustNotAgreeTo, ["prices", "dates", "deposits", "terms"]);
   const ok = { ...script, opening: `${DISCLOSURE} Hello` };
   assert.equal(ensureDisclosure(ok).opening, ok.opening);
+  const mid = { ...script, opening: `Hey. ${DISCLOSURE} Hello`, mustNotAgreeTo: ["prices", "refunds"] };
+  const m = ensureDisclosure(mid);
+  assert.equal(m.opening, mid.opening);
+  assert.deepEqual(m.mustNotAgreeTo, ["prices", "refunds", "dates", "deposits", "terms"]);
+  assert.equal(ensureDisclosure({ ...script, opening: "" }).opening, DISCLOSURE);
+});
+
+test("fakeChannel logs onCallEnded rejection", async () => {
+  const orig = console.error;
+  const logged: unknown[][] = [];
+  console.error = (...a) => { logged.push(a); };
+  try {
+    const ch = fakeChannel(async () => { throw new Error("boom"); }, store.seed);
+    await ch.callHost("e", "host_final", script);
+    await tick(); await tick();
+  } finally { console.error = orig; }
+  assert.equal(logged.length, 1);
+  assert.match(String(logged[0][0]), /onCallEnded failed/);
 });

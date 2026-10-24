@@ -5,7 +5,7 @@ import type { Channel, OnCallEnded } from "@/integrations/channel";
 export function fakeChannel(onCallEnded: OnCallEnded, seed: Seed, sink?: (to: string, body: string) => void): Channel {
   const call = async (transcript: string) => {
     const callId = randomUUID();
-    setImmediate(() => { void onCallEnded(callId, transcript); });
+    setImmediate(() => { onCallEnded(callId, transcript).catch((e) => console.error("[fakeChannel] onCallEnded failed", e)); });
     return { callId };
   };
   return {
