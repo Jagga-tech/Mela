@@ -67,24 +67,33 @@ export async function translate(text: string, lang: Language, audit: AuditEvent[
 
 ---
 
-### Task 2: Cartesia agents per language
+### Task 2: Cartesia agents per language, English-native scripts
+
+**User decision (Oct 24, late):** English is the native language of the system. Call scripts, host texts (unless the host wrote in another language) and all records stay English. Only the Cartesia voice agent understands and speaks the vendor's language on the call. Task 1's "write the whole script in the vendor's language" is reverted here.
 
 **Files:**
-- Modify: `src/integrations/cartesia.ts`, `scripts/cartesia-setup.ts`, `tests/cartesia.test.ts`, `.env.example`
+- Modify: `src/integrations/cartesia.ts`, `scripts/cartesia-setup.ts`, `src/agents/outreach.ts`, `src/agents/translator.ts`, `src/lib/i18n.ts`, `tests/cartesia.test.ts`, `tests/outreach.test.ts`, `.env.example`
 
 **Interfaces:**
 ```ts
+// outreach.ts: buildCallScript always writes English; remove the "Write the whole script in <Language>" prompt line and any vendor.language read; ensureDisclosure(script) uses DISCLOSURES.en only.
+// translator.ts: output cap 600 → 1500 characters.
+// i18n.ts: DISCLOSURES.hi and DISCLOSURES.pa rephrased gender-neutral (no feminine/masculine verb forms: e.g. "मैं Mela हूँ, एक AI सहायक। यह कॉल एक क्लाइंट की ओर से है। यह कॉल रिकॉर्ड और ट्रांसक्राइब की जा रही है। क्या अभी बात करना ठीक है?"); vi unchanged if already neutral. Keep `// ponytail: native-speaker check pending`.
 // cartesia.ts
-export function agentConfig(voiceId: string, lang: Language): object;  // language.primary = lang; instructions prefixed with `Speak only ${LANGUAGE_NAMES[lang]} for the whole call. ` ; name used by setup: `mela-caller-${lang}`
-export function agentIdFor(lang: Language, env = process.env): { id: string; fallback: boolean };
-// env[`CARTESIA_AGENT_ID_${lang.toUpperCase()}`] ?? env.CARTESIA_AGENT_ID (fallback: true when the language-specific id is missing and lang !== "en"); throws the setup message if neither exists
-// cartesiaCalls: callHost uses event.language, callVendor uses vendor.language; when fallback is true push an audit entry on the event: actor "cartesia", action "agent_language_fallback", detail lang; pass dynamic variable language: LANGUAGE_NAMES[lang]
-// scripts/cartesia-setup.ts: for each lang in LANGUAGES: find agent `mela-caller-${lang}` → create or update with agentConfig(voiceFor(lang), lang); print/write CARTESIA_AGENT_ID_<LANG>; keep writing CARTESIA_AGENT_ID = the en agent id; the legacy agent named `mela-caller` (if present) is renamed to `mela-caller-en` via PATCH name, not duplicated
+export function agentConfig(voiceId: string, lang: Language): object;
+// language.primary = lang; initial_message = "{{opening}}"; instructions prefixed with:
+// `You speak only ${LANGUAGE_NAMES[lang]} with the person on the call. The call script variables below are written in English; convey their meaning naturally in ${LANGUAGE_NAMES[lang]}, keeping numbers, names and amounts exact. ` (for en: no prefix)
+export function agentIdFor(lang: Language, env = process.env): { id: string; fallback: boolean };   // env[`CARTESIA_AGENT_ID_${LANG}`] ?? env.CARTESIA_AGENT_ID; fallback true when lang !== "en" and the specific id is missing; throws the setup message when neither exists
+export async function localizedOpening(script: CallScript, lang: Language, audit: AuditEvent[]): Promise<string>;
+// en → script.opening; else DISCLOSURES[lang] + " " + translate(rest, lang, audit) where rest = script.opening with DISCLOSURES.en removed (trimmed); if rest is empty → DISCLOSURES[lang]
+// scriptVariables(kind, script, melaCallId, opening = script.opening) — opening parameter added; questions/closing/must_not_agree_to stay English; add language: LANGUAGE_NAMES[lang]
+// cartesiaCalls: callHost uses event.language, callVendor uses vendor.language; picks agentIdFor(lang); computes localizedOpening; on fallback pushes audit { actor: "cartesia", action: "agent_language_fallback", detail: lang } on the event and saves it
+// scripts/cartesia-setup.ts: for each lang in LANGUAGES: agent `mela-caller-${lang}` create-or-update with agentConfig(voiceFor(lang), lang) where voiceFor = env[`CARTESIA_VOICE_ID_${LANG}`] ?? env.CARTESIA_VOICE_ID ?? default; a legacy agent named exactly `mela-caller` is renamed to `mela-caller-en` (PATCH name) instead of creating a new en agent; prints/writes CARTESIA_AGENT_ID_<LANG> for all four and CARTESIA_AGENT_ID = the en id
 // .env.example: CARTESIA_AGENT_ID_EN=, CARTESIA_AGENT_ID_HI=, CARTESIA_AGENT_ID_PA=, CARTESIA_AGENT_ID_VI=, CARTESIA_VOICE_ID=, CARTESIA_VOICE_ID_HI=, CARTESIA_VOICE_ID_PA=, CARTESIA_VOICE_ID_VI=
 ```
 
-- [ ] **Step 1: Write failing tests** in `tests/cartesia.test.ts`: `agentConfig(v,"hi").config.language.primary === "hi"` and instructions start with "Speak only Hindi"; `agentIdFor("vi", {CARTESIA_AGENT_ID:"a"})` → `{id:"a", fallback:true}`; `agentIdFor("vi", {CARTESIA_AGENT_ID_VI:"b"})` → `{id:"b", fallback:false}`; `agentIdFor("en", {})` throws; `cartesiaCalls` with a vendor of language `vi` and only `CARTESIA_AGENT_ID` set places the call with agent "a", passes `dynamic_variables.language === "Vietnamese"`, and the event audit gains `agent_language_fallback`.
+- [ ] **Step 1: Write failing tests.** `tests/cartesia.test.ts`: `agentConfig(v,"hi")` has `language.primary === "hi"` and instructions start with "You speak only Hindi"; `agentConfig(v,"en")` has no such prefix; `agentIdFor` cases (vi with only CARTESIA_AGENT_ID → fallback true; with CARTESIA_AGENT_ID_VI → that id; en with nothing → throws); `localizedOpening` for en returns the opening unchanged and never calls translate; for hi with an injected translator returns `DISCLOSURES.hi + " " + <translated rest>`; `cartesiaCalls` with a `vi` vendor and only CARTESIA_AGENT_ID set places the call with that agent, `dynamic_variables.language === "Vietnamese"`, English `questions`, and the event audit gains `agent_language_fallback`. `tests/outreach.test.ts`: `buildCallScript` prompt/system text no longer mentions writing in another language (assert on `outreachSpec.system`), `ensureDisclosure` uses the English line.
 - [ ] **Step 2: `npm test`** → fail.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: checks clean.**
-- [ ] **Step 5: Commit** `git commit -m "feat: one Cartesia agent per language, chosen by the callee's language"`
+- [ ] **Step 5: Commit** `git commit -m "feat: per-language Cartesia agents speak the vendor's language; scripts and records stay English"`
