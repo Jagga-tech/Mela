@@ -1,0 +1,31 @@
+{
+  "name": "mela",
+  "version": "1.0.0",
+  "description": "The Bright Data side of the research pipeline: fetch a page as markdown, find official pages with search, and track every source's status (fetching → slow → found / empty / blocked / error) with one bounded retry.",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "research:fetch": "tsx --conditions=react-server --env-file=.env.local scripts/try-fetch.ts",
+    "research:search": "tsx --conditions=react-server --env-file=.env.local scripts/try-search.ts",
+    "research:break": "tsx --conditions=react-server --env-file=.env.local scripts/break-things.ts",
+    "test:research": "tsx --conditions=react-server --test tests/research/*.test.ts"
+  
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Jagga-tech/Mela.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Jagga-tech/Mela/issues"
+  },
+  "homepage": "https://github.com/Jagga-tech/Mela#readme"
+
+} 
