@@ -42,8 +42,9 @@ export function fileStore(path = process.env.MELA_STORE ?? "data/store.json"): S
     async saveEvent(e) { const d = read(); e.updatedAt = new Date().toISOString(); d.events[e.id] = e; write(d); },
     async findEventByCallId(callId) { return events().find(e => e.calls.some(c => c.id === callId)) ?? null; },
     async findEventByHostPhone(phone) {
-      const hits = events().filter(e => digits(e.hostPhone) === digits(phone));
-      return hits.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] ?? null;
+      // >= so ties go to the later-inserted event
+      return events().filter(e => digits(e.hostPhone) === digits(phone))
+        .reduce<Event | null>((best, e) => !best || e.updatedAt >= best.updatedAt ? e : best, null);
     },
     async listVendors(category) { return seed.vendors.filter(v => !category || v.category === category); },
     async getVendor(id) { return seed.vendors.find(v => v.id === id) ?? null; },
