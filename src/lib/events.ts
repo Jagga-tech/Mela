@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { fence, runAgent } from "@/agents/harness";
 import { runIntake } from "@/agents/intake";
 import { extractQuote } from "@/agents/quote";
-import { translate } from "@/agents/translator";
 import { asLanguage, DISCLOSURES } from "@/lib/i18n";
 import { isPastApproval, leadSpec, makeLeadTools, quotesToPay, sendText, setStatus, type LeadContext } from "@/agents/lead";
 export { advanceStatus, quotesToPay } from "@/agents/lead";
@@ -58,8 +57,8 @@ const briefSentence = (b: EventBrief) =>
 async function startConfirmCall(event: Event) {
   setStatus(event, "confirming");
   const q = `Here is what I have: ${briefSentence(event.brief!)}. Is that right, or would you like to change anything?`;
-  await placeHostCall(event, "host_confirm", { opening: DISCLOSURES[event.language], mustNotAgreeTo: [],
-    closing: await translate("Thanks, I'll start calling vendors.", event.language, event.audit), questions: [await translate(q, event.language, event.audit)] });
+  await placeHostCall(event, "host_confirm", { opening: DISCLOSURES.en, mustNotAgreeTo: [],
+    closing: "Thanks, I'll start calling vendors.", questions: [q] }); // English-native; the voice agent localizes
 }
 
 async function intakeStep(event: Event, text: string, detectLanguage = false) {
@@ -187,8 +186,8 @@ async function runPayments(event: Event) {
   }
   setStatus(event, "paid");
   await sendText(event, channel, event.hostPhone, allDoneText(event));
-  await placeHostCall(event, "host_final", { opening: DISCLOSURES[event.language], questions: [],
-    closing: await translate(allDoneText(event) + " Thank you.", event.language, event.audit), mustNotAgreeTo: [] });
+  await placeHostCall(event, "host_final", { opening: DISCLOSURES.en, questions: [],
+    closing: allDoneText(event) + " Thank you.", mustNotAgreeTo: [] });
 }
 
 // Runs detached after onInboundText returns, so it takes the lock itself.
