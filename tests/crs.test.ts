@@ -2,16 +2,18 @@ import { test } from "node:test"; import assert from "node:assert/strict";
 import { crsClient } from "@/integrations/crs";
 import type { Vendor } from "@/lib/types";
 
-const vendor: Vendor = { id: "v", name: "V", category: "venue", phone: "+1 (555) 000-0001", capacity: null, priceHintUsd: null,
-  accessibility: [], dietary: [], contactFirstName: "Ana", contactLastName: "Verde", email: null, address: null };
+const vendor: Vendor = { id: "v", name: "V", category: "venue", phone: "+15550000001", capacity: null, priceHintUsd: null,
+  accessibility: [], dietary: [], contactFirstName: "Ana", contactLastName: "Verde", contactPhone: "+1 (555) 010-1019",
+  email: "ana@example.com", address: { addressLine1: "1 MAIN ST", city: "BERKELEY", state: "CA", postalCode: "94707" } };
 const env = { CRS_USERNAME: "u", CRS_PASSWORD: "p" } as unknown as NodeJS.ProcessEnv;
 type Call = { url: string; init: RequestInit };
-// scripted: each product response in order; login always succeeds with tok1, tok2, ...
-const fake = (product: [number, unknown][]) => {
+// scripted: each product response in order; login succeeds with tok1, tok2, ... unless loginStatus is set
+const fake = (product: [number, unknown][], loginStatus = 200) => {
   const calls: Call[] = []; let logins = 0;
   const f = (async (url: string | URL | Request, init?: RequestInit) => {
     calls.push({ url: String(url), init: init! });
-    if (String(url).endsWith("/users/login")) return Response.json({ token: `tok${++logins}`, expires: 3600 });
+    if (String(url).endsWith("/users/login"))
+      return loginStatus === 200 ? Response.json({ token: `tok${++logins}`, expires: 3600 }) : Response.json({ messages: ["bad login"] }, { status: loginStatus });
     const [status, json] = product.shift()!;
     return new Response(JSON.stringify(json), { status });
   }) as typeof fetch;
@@ -30,8 +32,8 @@ test("logs in lazily, posts fraud-finder with bearer token, caches the token", a
   assert.deepEqual(JSON.parse(calls[0].init.body as string), { username: "u", password: "p" });
   assert.equal(calls[1].url, "https://api-sandbox.stitchcredit.com/api/fraud-finder/fraud-finder");
   assert.equal((calls[1].init.headers as Record<string, string>).Authorization, "Bearer tok1");
-  const body = JSON.parse(calls[1].init.body as string);
-  assert.equal(body.phoneNumber, "15550000001"); assert.equal(body.firstName, "Ana"); assert.equal(body.lastName, "Verde");
+  assert.deepEqual(JSON.parse(calls[1].init.body as string), { firstName: "Ana", lastName: "Verde", phoneNumber: "5550101019",
+    email: "ana@example.com", address: { addressLine1: "1 MAIN ST", city: "BERKELEY", state: "CA", postalCode: "94707" } });
   await c.fraudFinder(vendor);
   assert.equal(logins().length, 1);
 });
@@ -43,6 +45,24 @@ test("401 re-logs in once and retries; a second 401 throws", async () => {
   assert.equal((ok.calls[3].init.headers as Record<string, string>).Authorization, "Bearer tok2");
   const bad = fake([[401, {}], [401, {}]]);
   await assert.rejects(crsClient(env, bad.f)!.reversePhone(vendor), /crs 401/);
+  assert.equal(bad.logins().length, 2);
+});
+
+test("reversePhone sends only the 10-digit phone; null email/address keys are omitted", async () => {
+  const { f, calls } = fake([[200, {}], [200, {}]]);
+  const c = crsClient(env, f)!;
+  await c.reversePhone(vendor);
+  assert.deepEqual(JSON.parse(calls[1].init.body as string), { phoneNumber: "5550101019" });
+  await c.fraudFinder({ ...vendor, email: null, address: null });
+  assert.deepEqual(Object.keys(JSON.parse(calls[2].init.body as string)), ["firstName", "lastName", "phoneNumber"]);
+});
+
+test("a rejected login is never retried", async () => {
+  const { f, logins } = fake([], 401);
+  const c = crsClient(env, f)!;
+  await assert.rejects(c.fraudFinder(vendor), /crs 401 bad login/);
+  await assert.rejects(c.reversePhone(vendor), /login failed earlier/);
+  assert.equal(logins().length, 1);
 });
 
 test("other errors throw with the first message", async () => {

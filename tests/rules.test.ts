@@ -6,7 +6,7 @@ import type { FraudFinderResult, ReverseResult } from "@/integrations/crs";
 const brief = (o: Partial<EventBrief> = {}): EventBrief => ({ eventType: "party", location: "SF", dateWindow: null,
   guestCount: 110, budgetUsd: 12000, accessibility: ["step-free"], dietary: ["vegetarian"], preferences: [], ...o });
 const venue = (o: Partial<Vendor> = {}): Vendor => ({ id: "v", name: "V", category: "venue", phone: "1",
-  capacity: 120, priceHintUsd: null, accessibility: ["step-free"], dietary: [], contactFirstName: "Ana", contactLastName: "Verde", email: null, address: null, ...o });
+  capacity: 120, priceHintUsd: null, accessibility: ["step-free"], dietary: [], contactFirstName: "Ana", contactLastName: "Verde", contactPhone: "1", email: null, address: null, ...o });
 const ex = (o: Partial<QuoteExtract> = {}): QuoteExtract => ({ available: true, priceUsd: null, depositUsd: null,
   terms: [], evidence: [], openQuestions: [], ...o });
 const q = (id: string, priceUsd: number | null): VendorQuote => ({ vendorId: id, callId: "c", extract: ex({ priceUsd }), createdAt: "" });
@@ -56,10 +56,13 @@ const rev = (lastName?: string): ReverseResult => ({ success: true, data: { reco
 
 test("vendorRisk clear / block / review", () => {
   assert.deepEqual(vendorRisk(ffr(10), rev(" verde "), venue()), { level: "clear", reasons: [] });
-  assert.equal(vendorRisk(ffr(95), rev("Verde"), venue()).level, "block");
+  assert.equal(vendorRisk(ffr(88), rev("Verde"), venue()).level, "block");
   assert.equal(vendorRisk(ffr(60), rev("Verde"), venue()).level, "review");
   const u = vendorRisk(null, rev("Verde"), venue());
   assert.equal(u.level, "review"); assert.ok(u.reasons.some((r) => r.includes("unavailable")));
+  assert.deepEqual(vendorRisk(ffr(88), rev("Verde"), venue()).reasons, ["risk score high"]);
+  assert.deepEqual(vendorRisk(ffr(60), rev("Verde"), venue()).reasons, ["risk score elevated"]);
+  assert.deepEqual(vendorRisk({ risk: { score: 10, phone: { status: "disconnected" } } }, rev("Verde"), venue()).reasons, ["phone not active"]);
   const nf = vendorRisk(ffr(10), rev(), venue());
   assert.equal(nf.level, "review"); assert.ok(nf.reasons.includes("phone not found"));
 });

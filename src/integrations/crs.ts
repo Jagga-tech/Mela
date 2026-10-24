@@ -21,7 +21,7 @@ export function crsClient(env: NodeJS.ProcessEnv = process.env, fetchImpl: typeo
   if (!username || !password) return null;
   const base = env.CRS_BASE_URL || "https://api-sandbox.stitchcredit.com/api";
   const config = env.CRS_CONFIG || "fraud-finder";
-  let token: string | null = null, expiresAt = 0;
+  let token: string | null = null, expiresAt = 0, loginFailed = false;
 
   const post = (path: string, body: unknown, auth?: string) => fetchImpl(base + path, {
     method: "POST", body: JSON.stringify(body), signal: AbortSignal.timeout(15000),
@@ -32,8 +32,10 @@ export function crsClient(env: NodeJS.ProcessEnv = process.env, fetchImpl: typeo
     return new Error(`crs ${res.status} ${j.messages?.[0] ?? ""}`.trim());
   };
   const login = async () => {
+    // a rejected login is not retried: repeated bad logins can lock the sandbox account
+    if (loginFailed) throw new Error("crs login failed earlier; not retrying");
     const res = await post("/users/login", { username, password });
-    if (!res.ok) throw await fail(res);
+    if (!res.ok) { loginFailed = true; throw await fail(res); }
     const j = await res.json() as { token: string; expires: number };
     token = j.token; expiresAt = expiryMs(j.expires, Date.now()) - 60_000;
     return token;
@@ -44,10 +46,16 @@ export function crsClient(env: NodeJS.ProcessEnv = process.env, fetchImpl: typeo
     if (!res.ok) throw await fail(res);
     return res.json() as Promise<T>;
   };
-  const person = (v: Vendor) => ({ phoneNumber: digits(v.phone), firstName: v.contactFirstName, lastName: v.contactLastName });
+  // the sandbox matches canned personas on exactly these fields; phone is 10 digits, no country code
+  const phoneNumber = (v: Vendor) => digits(v.contactPhone).slice(-10);
 
-  return {
-    fraudFinder: (v) => call(`/fraud-finder/${config}`, { ...person(v), email: v.email ?? undefined, address: v.address ?? undefined }),
-    reversePhone: (v) => call("/accurate-append/reverse", person(v)),
+  return { // undefined keys drop out of JSON.stringify
+    fraudFinder: (v) => call(`/fraud-finder/${config}`, { firstName: v.contactFirstName, lastName: v.contactLastName,
+      phoneNumber: phoneNumber(v), email: v.email ?? undefined, address: v.address ?? undefined }),
+    reversePhone: (v) => call("/accurate-append/reverse", { phoneNumber: phoneNumber(v) }),
   };
 }
+
+// one client per process, so a failed login is remembered across vendors and runs
+let shared: CrsClient | null | undefined;
+export const crs = () => (shared === undefined ? (shared = crsClient()) : shared);

@@ -76,7 +76,7 @@ export type FinanceCase = {
 export type VendorCategory = "venue" | "catering" | "decor";
 export type Vendor = { id: string; name: string; category: VendorCategory; phone: string;
   capacity: number | null; priceHintUsd: number | null; accessibility: string[]; dietary: string[];
-  contactFirstName: string; contactLastName: string; email: string | null;
+  contactFirstName: string; contactLastName: string; contactPhone: string; email: string | null;
   address: { addressLine1: string; city: string; state: string; postalCode: string } | null };
 export type RiskLevel = "clear" | "review" | "block";
 export type VendorRisk = { vendorId: string; level: RiskLevel; reasons: string[]; checkedAt: string; source: "crs" };

@@ -38,6 +38,7 @@ test("VENDOR_PHONE_<id> overrides the seed phone when the store loads", async ()
   try {
     const s2 = fileStore(join(mkdtempSync(join(tmpdir(), "mela-")), "store.json"));
     assert.equal((await s2.getVendor("venue-casa-verde"))?.phone, "+15557770000");
+    assert.equal((await s2.getVendor("venue-casa-verde"))?.contactPhone, "+15550101019"); // CRS persona phone is untouched
     assert.equal((await s2.getVendor("decor-flor"))?.phone, "+15550000003");
   } finally { delete process.env["VENDOR_PHONE_venue-casa-verde"]; }
 });

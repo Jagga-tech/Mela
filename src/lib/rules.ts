@@ -44,19 +44,19 @@ export function budgetCheck(brief: EventBrief, quotes: VendorQuote[]) {
 }
 
 // ponytail: AtData score assumed 0-100, higher = riskier; confirm the scale with CRS at the booth
-export const RISK_BLOCK_SCORE = 90;
+export const RISK_BLOCK_SCORE = 80; // sandbox fraud personas score 85 and 88
 export const RISK_REVIEW_SCORE = 50;
 export const RISK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-// null input = that check could not run, which is never clear
+// null input = that check could not run, which is never clear. Reasons are fixed strings, never raw CRS values.
 export function vendorRisk(ff: FraudFinderResult | null, rev: ReverseResult | null, vendor: Vendor): { level: RiskLevel; reasons: string[] } {
   const block: string[] = [], review: string[] = [];
   const r = ff?.risk;
-  if (r && r.score >= RISK_BLOCK_SCORE) block.push(`risk score ${r.score}`);
+  if (r && r.score >= RISK_BLOCK_SCORE) block.push("risk score high");
   if (r?.tumbling_risk) block.push("tumbling risk");
   if (!r) review.push("fraud check unavailable");
-  else if (r.score >= RISK_REVIEW_SCORE && r.score < RISK_BLOCK_SCORE) review.push(`risk score ${r.score}`);
-  if (r?.phone?.status && r.phone.status !== "active") review.push(`phone status ${r.phone.status}`);
+  else if (r.score >= RISK_REVIEW_SCORE && r.score < RISK_BLOCK_SCORE) review.push("risk score elevated");
+  if (r?.phone?.status && r.phone.status !== "active") review.push("phone not active");
   if (r?.postal?.last_name_match === "no") review.push("name does not match address");
   const last = vendor.contactLastName.trim().toLowerCase();
   if (!rev) review.push("phone lookup unavailable");

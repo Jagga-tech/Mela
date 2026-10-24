@@ -66,8 +66,8 @@ test("advanceStatus only moves forward; needs_planner allowed before approval", 
 test("quotesToPay picks one available quote per category in shortlist order", async () => {
   const { quotesToPay, store } = await load();
   const vendors = [...(await store.listVendors()),
-    { id: "venue-2", name: "V2", category: "venue" as const, phone: "", capacity: 200, priceHintUsd: null, accessibility: [], dietary: [], contactFirstName: "", contactLastName: "", email: null, address: null },
-    { id: "cater-2", name: "C2", category: "catering" as const, phone: "", capacity: null, priceHintUsd: null, accessibility: [], dietary: [], contactFirstName: "", contactLastName: "", email: null, address: null }];
+    { id: "venue-2", name: "V2", category: "venue" as const, phone: "", capacity: 200, priceHintUsd: null, accessibility: [], dietary: [], contactFirstName: "", contactLastName: "", contactPhone: "", email: null, address: null },
+    { id: "cater-2", name: "C2", category: "catering" as const, phone: "", capacity: null, priceHintUsd: null, accessibility: [], dietary: [], contactFirstName: "", contactLastName: "", contactPhone: "", email: null, address: null }];
   const e = await store.createEvent("+15550004444");
   const item = (vendorId: string) => ({ vendorId, fit: "fit" as const, conflicts: [], unknowns: [], reason: "" });
   const quote = (vendorId: string, available: boolean | null) => ({ vendorId, callId: "c-" + vendorId, createdAt: "",

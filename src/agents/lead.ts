@@ -8,6 +8,7 @@ import { buildCallScript } from "@/agents/outreach";
 import { checkFit, budgetCheck } from "@/lib/rules";
 import { createApproval } from "@/lib/approvals";
 import { summaryText } from "@/lib/notify";
+import { ensureVendorRisk } from "@/lib/vendorRisk";
 import type { Store } from "@/lib/store";
 import type { Channel } from "@/integrations/channel";
 import { EVENT_STATUS_ORDER, type AuditEvent, type Event, type EventStatus, type Vendor, type VendorQuote } from "@/lib/types";
@@ -74,10 +75,10 @@ export function makeLeadTools(ctx: LeadContext): BetaRunnableTool<any>[] { // es
         if (!r.ok) return refuse("find_vendors", "vendor search failed: " + r.reason);
         const found: Vendor[] = [];
         for (const v of await vendors(r.data.options.map((o) => o.vendorId))) { // drops ids the store does not know
-          const risk = (await store.getVendorRisk(v.id))?.level;
+          const { level: risk } = await ensureVendorRisk(event, v, new Date());
           if (risk === "block") { log("vendor_hidden", v.id); continue; }
           found.push(v);
-          const fit = { ...checkFit(event.brief, v), ...(risk && { risk }) };
+          const fit = { ...checkFit(event.brief, v), risk };
           const old = event.shortlist.find((s) => s.vendorId === v.id);
           if (old) Object.assign(old, fit);
           else event.shortlist.push({ vendorId: v.id, ...fit, reason: "" });
