@@ -1,3 +1,5 @@
+Oct 24 2026: fake channel, console texts, simulated payments and the demo script were removed at the user's request; the flow runs only against iMessage, Cartesia and Stripe test mode. The demo files live outside the repo on the user's Mac.
+
 # Mela agent demo flow: design
 
 Oct 24 2026. Scope: the agent and backend half of the CalHacks demo. The frontend and the data collection are other teammates' work. Phone and iMessage are channels behind one adapter and get wired last.
