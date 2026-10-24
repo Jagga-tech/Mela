@@ -1,5 +1,5 @@
 import { test } from "node:test"; import assert from "node:assert/strict";
-import { fileStore } from "@/lib/store"; import { mkdtempSync } from "node:fs"; import { join } from "node:path"; import { tmpdir } from "node:os";
+import { fileStore } from "@/lib/store"; import { mkdtempSync, writeFileSync } from "node:fs"; import { join } from "node:path"; import { tmpdir } from "node:os";
 const s = fileStore(join(mkdtempSync(join(tmpdir(), "mela-")), "store.json"));
 test("createEvent copies the seeded mandate with all vendor ids", async () => {
   const e = await s.createEvent("+15551234567");
@@ -48,4 +48,18 @@ test("saveVendorRisk then getVendorRisk round-trips; unknown is null", async () 
   await s.saveVendorRisk(r);
   assert.deepEqual(await s.getVendorRisk("venue-casa-verde"), r);
   assert.equal(await s.getVendorRisk("none"), null);
+});
+
+test("every event finder backfills language and finance arrays on old events", async () => {
+  const path = join(mkdtempSync(join(tmpdir(), "mela-")), "store.json");
+  const old = { id: "old1", hostPhone: "+15550001111", updatedAt: "2026-01-01T00:00:00Z",
+    calls: [{ id: "call-old" }], approvals: [{ status: "pending", code: "7777" }] };
+  writeFileSync(path, JSON.stringify({ events: { old1: old }, keys: [] }));
+  const st = fileStore(path);
+  for (const e of [await st.getEvent("old1"), await st.findEventByCallId("call-old"),
+    await st.findEventByHostPhone("+15550001111"), await st.findEventByPendingCode("7777")]) {
+    assert.ok(e);
+    assert.equal(e.language, "en");
+    assert.deepEqual([e.purchaseOrders, e.invoices, e.financeExceptions], [[], [], []]);
+  }
 });

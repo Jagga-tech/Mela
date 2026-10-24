@@ -123,6 +123,7 @@ test("agentIdFor picks the language agent or falls back to English", () => {
   assert.deepEqual(agentIdFor("vi", e({ CARTESIA_AGENT_ID: "a_en", CARTESIA_AGENT_ID_VI: "a_vi" })), { id: "a_vi", fallback: false });
   assert.deepEqual(agentIdFor("en", e({ CARTESIA_AGENT_ID_EN: "a_en2", CARTESIA_AGENT_ID: "a_en" })), { id: "a_en2", fallback: false });
   assert.deepEqual(agentIdFor("en", e({ CARTESIA_AGENT_ID: "a_en" })), { id: "a_en", fallback: false });
+  assert.deepEqual(agentIdFor("hi", e({ CARTESIA_AGENT_ID: "a", CARTESIA_AGENT_ID_HI: "h" })), { id: "h", fallback: false });
   assert.throws(() => agentIdFor("en", e({})), /run npm run cartesia:setup/);
 });
 
@@ -168,4 +169,13 @@ test("cartesiaCalls: a vi vendor with only the English agent falls back, audits,
     mock.timers.reset();
     delete process.env.CARTESIA_AGENT_ID; delete process.env.CARTESIA_PHONE_NUMBER_ID;
   }
+});
+
+test("updateAgent sends name and config in one PATCH (renames the legacy agent)", async () => {
+  const { f, calls } = fake(200, {});
+  await cartesiaClient(env, f).updateAgent("ag_1", "mela-caller-en", { language: { primary: "en" } });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://api.cartesia.ai/v1/agents/ag_1");
+  assert.equal(calls[0].init.method, "PATCH");
+  assert.deepEqual(JSON.parse(calls[0].init.body as string), { name: "mela-caller-en", config: { language: { primary: "en" } } });
 });

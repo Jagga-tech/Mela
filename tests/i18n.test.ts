@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { BetaMessage } from "@anthropic-ai/sdk/resources/beta/messages/messages";
 import { asLanguage, verbOf } from "../src/lib/i18n";
-import { translate } from "../src/agents/translator";
+import { translate, translatorSpec } from "../src/agents/translator";
+import { intakeSpec } from "../src/agents/intake";
 import type { Send } from "../src/agents/harness";
 import type { AuditEvent } from "../src/lib/types";
 
@@ -56,4 +57,15 @@ test("translate timeout returns the English text and audits translate_failed", a
   const hang: Send = () => new Promise(() => {});
   assert.equal(await translate("Reply YES 9999 later", "vi", audit, hang, 10), "Reply YES 9999 later");
   assert.ok(audit.some((a) => a.action === "translate_failed" && /timeout/.test(a.detail ?? "")));
+});
+
+test("translator output cap is 1500 characters", () => {
+  assert.ok(translatorSpec.output.safeParse({ text: "a".repeat(1500) }).success);
+  assert.ok(!translatorSpec.output.safeParse({ text: "a".repeat(1501) }).success);
+});
+
+test("intake maps an unexpected language code to en instead of failing", () => {
+  const out = intakeSpec.output.parse({ brief: { eventType: "", location: "", dateWindow: null, guestCount: null, budgetUsd: null,
+    accessibility: [], dietary: [], preferences: [] }, missing: [], changes: [], language: "es" });
+  assert.equal(out.language, "en");
 });

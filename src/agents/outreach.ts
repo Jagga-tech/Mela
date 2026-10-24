@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { fence, runAgent, type AgentResult, type AgentSpec } from "@/agents/harness";
+import { fence, runAgent, type AgentResult, type AgentSpec, type Send } from "@/agents/harness";
 import type { AuditEvent, CallScript, EventBrief, Vendor } from "@/lib/types";
 import { DISCLOSURES } from "@/lib/i18n";
 
@@ -32,8 +32,8 @@ export const ensureDisclosure = (s: CallScript): CallScript => ({
   mustNotAgreeTo: [...new Set([...s.mustNotAgreeTo, ...RULES])],
 });
 
-export async function buildCallScript(vendor: Vendor, brief: EventBrief, questions: string[], audit: AuditEvent[]): Promise<AgentResult<CallScript>> {
+export async function buildCallScript(vendor: Vendor, brief: EventBrief, questions: string[], audit: AuditEvent[], send?: Send): Promise<AgentResult<CallScript>> {
   const input = `Vendor: ${vendor.name} (${vendor.category})\n${fence("event_brief", JSON.stringify(brief))}\nQuestions to ask:\n${questions.map((q) => "- " + q).join("\n")}`;
-  const r = await runAgent(outreachSpec, input, audit);
+  const r = await runAgent(outreachSpec, input, audit, send);
   return r.ok ? { ok: true, data: ensureDisclosure(r.data) } : r;
 }
