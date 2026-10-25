@@ -48,3 +48,7 @@ spacetimedb/spacetime.local.json
 
 # browser automation output
 .playwright-mcp/
+
+# research module
+.research-cache/
+.research-out/
