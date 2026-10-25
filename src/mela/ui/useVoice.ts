@@ -18,8 +18,8 @@ function browserRecognizer(): SpeechRec | null {
 
 export const ENGINE_LABEL: Record<VoiceEngine, string> = {
   cartesia: "Voice: Cartesia (live)",
-  browser: "Voice: your browser's speech recognition (Cartesia not configured)",
-  none: "Voice isn't available here — typing works the same",
+  browser: "Voice: browser speech recognition (Cartesia not set up)",
+  none: "Voice isn't available here. Typing works the same.",
 };
 
 export function useVoice(onText: (text: string) => void) {

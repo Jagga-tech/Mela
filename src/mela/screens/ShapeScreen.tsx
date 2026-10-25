@@ -10,54 +10,51 @@ import { researchIsStale } from "../state/flow";
 import { MelaOrb } from "../ui/MelaOrb";
 import { Composer } from "../ui/Composer";
 import { useVoice } from "../ui/useVoice";
-import { Badge, Button, Card, Icon, SectionLabel } from "../ui/primitives";
+import { ActionBar, Button, Card, Icon, PageHeader } from "../ui/primitives";
 
 export function ShapeScreen() {
-  const { state, busy, startResearch, go } = useMela();
+  const { state, busy, startResearch, go, say } = useMela();
   const b = state.brief;
   const blockers = b ? confirmationBlockers(b) : [];
   const stale = researchIsStale(state);
-  const firstField = useRef<HTMLButtonElement>(null);
+  const q = state.questions[0];
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)]">
-      <section aria-labelledby="brief-h" className="anim-rise">
-        <SectionLabel>Event brief · built from your words</SectionLabel>
-        <h1 id="brief-h" tabIndex={-1} className="mt-2 font-serif text-[34px] leading-[1.1] outline-none">
-          {b ? headline(b) : "Tell Mela about your event"}
-        </h1>
-        <p className="mt-2 flex items-center gap-1.5 text-[13px] text-muted"><Icon name="edit" size={14} />Select any field to edit it. Priorities change what Mela searches for.</p>
+    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)] lg:gap-10">
+      <section aria-labelledby="brief-h" className="anim-rise min-w-0 space-y-8">
+        <PageHeader id="brief-h" eyebrow="Your brief · built from your words"
+          title={b ? headline(b) : "Tell Mela about your event"}
+          lede={b ? "Tap any detail to change it. Priorities decide what Mela filters and ranks." : undefined} />
 
-        {!b && busy === "intake" && <div className="mt-6 grid grid-cols-2 gap-3">{[0, 1, 2, 3].map((i) => <div key={i} className="skeleton h-[74px] rounded-xl" />)}</div>}
+        {!b && busy === "intake" && <div className="grid grid-cols-2 gap-3">{[0, 1, 2, 3].map((i) => <div key={i} className="skeleton h-[64px] rounded-xl" />)}</div>}
         {b && (
           <>
-            <BriefFields brief={b} firstRef={firstField} />
+            <BriefFields brief={b} />
             <Requirements brief={b} />
           </>
         )}
 
         {b && (
-          <Card className="mt-6 p-5">
-            {blockers.length > 0 ? (
+          <ActionBar
+            note={blockers.length > 0 ? (
               <div>
-                <p className="text-[14px] font-medium">Before Mela researches anything:</p>
-                <ul className="mt-2 space-y-1 text-[14px] text-muted">
-                  {blockers.map((x) => <li key={x} className="flex gap-2"><Icon name="question" size={16} className="mt-0.5 shrink-0 text-unk" />{x}</li>)}
+                <p className="font-medium text-fg">Before Mela researches anything</p>
+                <ul className="mt-1 space-y-1">
+                  {blockers.map((x) => <li key={x} className="flex gap-2"><Icon name="question" size={15} className="mt-0.5 shrink-0 text-held" />{x}</li>)}
                 </ul>
+                {q?.options && (
+                  <div className="mt-3 flex flex-wrap gap-2 lg:hidden" role="group" aria-label={q.question}>
+                    {q.options.map((o) => <Button key={o.value} variant="secondary" size="sm" onClick={() => say(o.label)} disabled={!!busy}>{o.label}</Button>)}
+                  </div>
+                )}
               </div>
-            ) : (
-              <p className="text-[14px] text-muted">
-                {stale ? "You changed the brief after research ran. Re-run it so results match what you want now." : "This is everything Mela will search with. Nothing is contacted during research."}
-              </p>
-            )}
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button variant="secondary" icon="edit" onClick={() => firstField.current?.click()}>Edit my details</Button>
-              <Button size="lg" iconRight="arrow" disabled={blockers.length > 0} loading={busy === "research"} onClick={startResearch}>
-                {stale ? "Re-run research with these changes" : "Yes, start researching"}
-              </Button>
-              {state.research && !stale && <Button variant="ghost" onClick={() => go("discover")}>See current results</Button>}
-            </div>
-          </Card>
+            ) : stale ? "You changed the brief after research ran. Re-run it so results match what you want now."
+              : "This is everything Mela will search with. Nothing is contacted during research."}>
+            {state.research && !stale && <Button variant="ghost" onClick={() => go("discover")}>See current results</Button>}
+            <Button size="lg" iconRight="arrow" disabled={blockers.length > 0} loading={busy === "research"} onClick={startResearch}>
+              {stale ? "Re-run research" : "Yes, start researching"}
+            </Button>
+          </ActionBar>
         )}
       </section>
       <Conversation />
@@ -71,19 +68,22 @@ function headline(b: EventBrief) {
   return `${occ}${guests ? ` for ${guests}` : ""}${b.city ? ` in ${b.city}` : ""}.`;
 }
 
-function FieldCard({ label, value, unset, children, buttonRef }: { label: string; value: ReactNode; unset?: boolean; children: (close: () => void) => ReactNode; buttonRef?: React.Ref<HTMLButtonElement> }) {
+function FieldCard({ label, value, unset, children }: { label: string; value: ReactNode; unset?: boolean; children: (close: () => void) => ReactNode }) {
   const [editing, setEditing] = useState(false);
   if (editing)
     return (
-      <div className="rounded-xl border-2 border-primary bg-surface p-3">
+      <div className="rounded-xl bg-primary-soft/50 p-3 ring-2 ring-primary/60">
         <p className="label-mono">{label}</p>
         <div className="mt-1.5">{children(() => setEditing(false))}</div>
       </div>
     );
   return (
-    <button ref={buttonRef} onClick={() => setEditing(true)} className={`group rounded-xl border p-3 text-left transition-colors hover:border-primary/50 ${unset ? "border-dashed border-faint/50 bg-transparent" : "border-line bg-surface"}`}>
-      <p className="label-mono">{label}</p>
-      <p className={`mt-1 text-[17px] ${unset ? "text-faint" : "font-medium"}`}>{value}</p>
+    <button onClick={() => setEditing(true)} className="group flex items-start justify-between gap-2 rounded-xl p-3 text-left transition-colors hover:bg-primary-soft/50">
+      <span className="min-w-0">
+        <span className="label-mono block">{label}</span>
+        <span className={`mt-0.5 block text-[16px] ${unset ? "text-held" : "font-medium"}`}>{value}</span>
+      </span>
+      <Icon name="edit" size={14} className="mt-1 shrink-0 text-faint opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
       <span className="sr-only">Edit {label}</span>
     </button>
   );
@@ -92,20 +92,20 @@ function FieldCard({ label, value, unset, children, buttonRef }: { label: string
 function InlineForm({ initial, onSave, close, type = "text", placeholder }: { initial: string; onSave: (v: string) => void; close: () => void; type?: string; placeholder?: string }) {
   const [v, setV] = useState(initial);
   return (
-    <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); onSave(v); close(); }}>
+    <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); onSave(v); close(); }}>
       <input autoFocus type={type} value={v} placeholder={placeholder} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => e.key === "Escape" && close()}
-        className="min-w-0 flex-1 rounded-lg border border-line bg-app px-2.5 py-1.5 text-[15px]" />
+        className="min-w-0 flex-1 rounded-lg bg-surface px-2.5 py-1.5 text-[16px] ring-1 ring-line-strong" />
       <Button size="sm" type="submit">Save</Button>
     </form>
   );
 }
 
-function BriefFields({ brief: b, firstRef }: { brief: EventBrief; firstRef: React.Ref<HTMLButtonElement> }) {
+function BriefFields({ brief: b }: { brief: EventBrief }) {
   const { setBrief } = useMela();
   const patch = (p: Partial<EventBrief>) => setBrief(editBrief(b, p));
   return (
-    <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-      <FieldCard label="Occasion" value={b.occasion || "Not set"} unset={!b.occasion} buttonRef={firstRef}>
+    <Card className="grid grid-cols-2 gap-1 p-2 sm:grid-cols-3">
+      <FieldCard label="Occasion" value={b.occasion || "Not set"} unset={!b.occasion}>
         {(close) => <InlineForm initial={b.occasion} close={close} onSave={(v) => patch({ occasion: v.trim().toLowerCase() })} />}
       </FieldCard>
       <FieldCard label="City" value={b.city || "Not set"} unset={!b.city}>
@@ -130,7 +130,7 @@ function BriefFields({ brief: b, firstRef }: { brief: EventBrief; firstRef: Reac
           </div>
         )}
       </FieldCard>
-    </div>
+    </Card>
   );
 }
 
@@ -138,17 +138,17 @@ function GuestEditor({ brief, close, onSave }: { brief: EventBrief; close: () =>
   const [min, setMin] = useState(String(brief.guestRange?.min ?? ""));
   const [max, setMax] = useState(String(brief.guestRange?.max ?? ""));
   return (
-    <form className="flex items-center gap-2" onSubmit={(e) => {
+    <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => {
       e.preventDefault();
       const a = Number(min), z = Number(max || min);
       onSave(a > 0 && z > 0 ? { min: Math.min(a, z), max: Math.max(a, z) } : null);
       close();
     }}>
       <label className="sr-only" htmlFor="gmin">Fewest guests</label>
-      <input id="gmin" autoFocus type="number" min={1} value={min} onChange={(e) => setMin(e.target.value)} className="w-20 rounded-lg border border-line bg-app px-2 py-1.5" />
+      <input id="gmin" autoFocus type="number" min={1} value={min} onChange={(e) => setMin(e.target.value)} className="w-16 rounded-lg bg-surface px-2 py-1.5 text-[16px] ring-1 ring-line-strong" />
       <span aria-hidden>–</span>
       <label className="sr-only" htmlFor="gmax">Most guests</label>
-      <input id="gmax" type="number" min={1} value={max} onChange={(e) => setMax(e.target.value)} className="w-20 rounded-lg border border-line bg-app px-2 py-1.5" />
+      <input id="gmax" type="number" min={1} value={max} onChange={(e) => setMax(e.target.value)} className="w-16 rounded-lg bg-surface px-2 py-1.5 text-[16px] ring-1 ring-line-strong" />
       <Button size="sm" type="submit">Save</Button>
     </form>
   );
@@ -165,37 +165,41 @@ function Requirements({ brief: b }: { brief: EventBrief }) {
     { title: "For the event", items: b.requirements.filter((r) => r.appliesTo === "event") },
   ].filter((g) => g.items.length);
   return (
-    <section aria-labelledby="req-h" className="mt-8">
-      <div className="flex items-baseline justify-between gap-4">
+    <section aria-labelledby="req-h">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h2 id="req-h" className="text-[18px] font-medium">What matters to you</h2>
-        <p className="text-[12px] text-faint">Must-haves filter results. Preferences rank them.</p>
+        <p className="t-small">Must-haves filter results. Preferences rank them.</p>
       </div>
-      {groups.length === 0 && <p className="mt-3 text-[14px] text-muted">No specific needs yet. Add one below, or tell Mela in the chat.</p>}
+      {groups.length === 0 && <p className="t-small mt-3">No specific needs yet. Add one below, or tell Mela in the chat.</p>}
       {groups.map((g) => (
-        <div key={g.title} className="mt-4">
-          <p className="label-mono mb-2">{g.title}</p>
-          <ul className="space-y-2">
+        <div key={g.title} className="mt-5">
+          <p className="label-mono mb-2 px-1">{g.title}</p>
+          <Card as="div" className="divide-y divide-line">
             {g.items.map((r) => (
-              <li key={r.id} className={`anim-rise flex flex-wrap items-center gap-3 rounded-xl border bg-surface px-3 py-2.5 ${r.priority === "UNSET" ? "border-dashed border-held/50" : "border-line"}`}>
-                <div className="min-w-0 flex-1">
+              <div key={r.id} className="anim-rise flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
+                <div className="min-w-0 flex-1 basis-[180px]">
                   <p className="text-[15px] font-medium">{r.label}</p>
-                  {r.saidAs && <p className="truncate text-[12px] text-faint" title={r.saidAs}><Badge kind="yourWords">your words</Badge> “{r.saidAs}”</p>}
+                  {r.priority === "UNSET"
+                    ? <p className="text-[13px] text-held">Choose a priority</p>
+                    : r.saidAs && <p className="truncate text-[13px] text-faint" title={r.saidAs}>You said “{r.saidAs}”</p>}
                 </div>
-                <fieldset className="flex rounded-lg border border-line p-0.5">
-                  <legend className="sr-only">Priority for {r.label}</legend>
-                  {PRIORITIES.map((p) => (
-                    <label key={p} className={`cursor-pointer rounded-md px-2.5 py-1 text-[13px] has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary ${r.priority === p ? "bg-primary text-white" : "text-muted hover:bg-primary-soft"}`}>
-                      <input type="radio" className="sr-only" name={`prio-${r.id}`} checked={r.priority === p} onChange={() => setBrief(setRequirementPriority(b, r.id, p))} />
-                      {priorityLabel[p]}
-                    </label>
-                  ))}
-                </fieldset>
-                {r.key !== "capacity" && r.key !== "venue_budget" && (
-                  <Button size="sm" variant="ghost" aria-label={`Remove ${r.label}`} onClick={() => setBrief(removeRequirement(b, r.id))}><Icon name="x" /></Button>
-                )}
-              </li>
+                <div className="flex items-center gap-1">
+                  <fieldset className="flex rounded-full bg-subtle/70 p-0.5">
+                    <legend className="sr-only">Priority for {r.label}</legend>
+                    {PRIORITIES.map((p) => (
+                      <label key={p} className={`cursor-pointer rounded-full px-2.5 py-1 text-[13px] transition-colors has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary ${r.priority === p ? "bg-surface font-medium text-primary shadow-card" : "text-muted hover:text-fg"}`}>
+                        <input type="radio" className="sr-only" name={`prio-${r.id}`} checked={r.priority === p} onChange={() => setBrief(setRequirementPriority(b, r.id, p))} />
+                        {priorityLabel[p]}
+                      </label>
+                    ))}
+                  </fieldset>
+                  {r.key !== "capacity" && r.key !== "venue_budget" ? (
+                    <Button size="sm" variant="ghost" className="!px-2" aria-label={`Remove ${r.label}`} onClick={() => setBrief(removeRequirement(b, r.id))}><Icon name="x" size={14} /></Button>
+                  ) : <span className="w-8" aria-hidden />}
+                </div>
+              </div>
             ))}
-          </ul>
+          </Card>
         </div>
       ))}
       <form className="mt-3 flex gap-2" onSubmit={(e) => {
@@ -207,8 +211,8 @@ function Requirements({ brief: b }: { brief: EventBrief }) {
         setAdding("");
       }}>
         <label htmlFor="add-req" className="sr-only">Add a requirement</label>
-        <input id="add-req" value={adding} onChange={(e) => setAdding(e.target.value)} placeholder="Add a need, e.g. “parking nearby”" className="min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 py-2 text-[14px]" />
-        <Button variant="secondary" type="submit" icon="spark">Add</Button>
+        <input id="add-req" value={adding} onChange={(e) => setAdding(e.target.value)} placeholder="Add a need, e.g. “parking nearby”" className="min-w-0 flex-1 rounded-full bg-surface px-4 py-2 text-[15px] ring-1 ring-line-strong placeholder:text-faint" />
+        <Button variant="secondary" type="submit">Add</Button>
       </form>
     </section>
   );
@@ -227,10 +231,10 @@ function Conversation() {
   const q = state.questions[0];
   const orb = busy === "intake" ? "thinking" : voice.phase === "speaking" ? "speaking" : q ? "uncertain" : state.brief && !confirmationBlockers(state.brief).length ? "succeeded" : "idle";
   return (
-    <section aria-labelledby="chat-h" className="anim-rise flex flex-col rounded-3xl border border-line bg-surface lg:sticky lg:top-24 lg:max-h-[calc(100vh-120px)]" style={{ animationDelay: "120ms" }}>
-      <div className="flex items-center gap-3 border-b border-line px-6 py-4">
+    <section aria-labelledby="chat-h" className="anim-rise flex min-w-0 flex-col rounded-3xl bg-surface shadow-card ring-1 ring-line lg:sticky lg:top-24 lg:max-h-[calc(100vh-120px)]" style={{ animationDelay: "120ms" }}>
+      <div className="flex items-center gap-3 border-b border-line px-4 py-4 sm:px-6">
         <MelaOrb state={orb} size={44} />
-        <div className="flex-1">
+        <div className="min-w-0 flex-1">
           <h2 id="chat-h" className="font-medium">Talking with Mela</h2>
           <p className="text-[12px] text-faint">{state.intakeOrigin?.label ?? "Mela asks only what she needs"}</p>
         </div>
@@ -241,7 +245,7 @@ function Conversation() {
           </label>
         )}
       </div>
-      <div className="min-h-[260px] flex-1 space-y-5 overflow-y-auto px-6 py-6" aria-live="polite" aria-relevant="additions">
+      <div className="min-h-[260px] flex-1 space-y-5 overflow-y-auto px-4 py-6 sm:px-6" aria-live="polite" aria-relevant="additions">
         {state.messages.length === 0 && <p className="pt-6 text-center text-[14px] text-faint">Tell Mela about your event and she&apos;ll ask only what she needs.</p>}
         {state.messages.map((m) => (
           <div key={m.id} className={`anim-rise flex flex-col gap-1 ${m.from === "host" ? "items-end" : "items-start"}`}>

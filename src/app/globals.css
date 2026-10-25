@@ -7,7 +7,8 @@
   --mela-bg-surface: #fffcf7;
   --mela-bg-subtle: #eee6da;
   --mela-bg-night: #1b1220;
-  --mela-border-default: #e4dacb;
+  --mela-border-default: #e7dfd2;
+  --mela-border-strong: #d6cab8;
   --mela-fg-default: #241826;
   --mela-fg-muted: #5e5162;
   --mela-fg-subtle: #6c6371;
@@ -33,6 +34,10 @@
   --mela-orb-deep: #7c5fb8;
   --mela-orb-glow: #b9a3e6;
   --mela-ember: #c2571f;
+  /* Shell additions: one spacing rhythm, one shadow, one radius family. */
+  --mela-shadow-card: 0 1px 2px rgb(36 24 38 / 0.04), 0 1px 1px rgb(36 24 38 / 0.02);
+  --mela-shadow-float: 0 8px 28px rgb(36 24 38 / 0.10), 0 1px 3px rgb(36 24 38 / 0.06);
+  --mela-bg-ops: #efe8de;
 }
 
 @theme inline {
@@ -41,6 +46,10 @@
   --color-subtle: var(--mela-bg-subtle);
   --color-night: var(--mela-bg-night);
   --color-line: var(--mela-border-default);
+  --color-line-strong: var(--mela-border-strong);
+  --color-ops: var(--mela-bg-ops);
+  --shadow-card: var(--mela-shadow-card);
+  --shadow-float: var(--mela-shadow-float);
   --color-fg: var(--mela-fg-default);
   --color-muted: var(--mela-fg-muted);
   --color-faint: var(--mela-fg-subtle);
@@ -69,7 +78,7 @@
 }
 
 @layer base {
-html { color-scheme: light; }
+html { color-scheme: light; -webkit-text-size-adjust: 100%; }
 body {
   background: var(--mela-bg-app);
   color: var(--mela-fg-default);
@@ -87,7 +96,20 @@ body {
 
 }
 
-.label-mono { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mela-fg-subtle); }
+.label-mono { font-family: var(--font-instrument-sans), system-ui, sans-serif; font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; line-height: 1.3; color: var(--mela-fg-subtle); }
+
+/* Type scale: four sizes do almost everything. */
+.t-display { font-family: var(--font-instrument-serif), Georgia, serif; font-size: clamp(30px, 6vw, 40px); line-height: 1.08; letter-spacing: -0.01em; }
+.t-title { font-family: var(--font-instrument-serif), Georgia, serif; font-size: clamp(26px, 4.6vw, 32px); line-height: 1.12; letter-spacing: -0.005em; }
+.t-lede { font-size: 16px; line-height: 1.6; color: var(--mela-fg-muted); }
+.t-body { font-size: 15px; line-height: 1.6; }
+.t-small { font-size: 13px; line-height: 1.5; color: var(--mela-fg-muted); }
+
+/* Disclosure marker: a quiet chevron instead of the default triangle. */
+details > summary { list-style: none; cursor: pointer; }
+details > summary::-webkit-details-marker { display: none; }
+.disclosure-chevron { transition: transform 160ms ease-out; }
+details[open] > summary .disclosure-chevron { transform: rotate(90deg); }
 
 /* Motion spec (Figma 02 · DESIGN LANGUAGE): word→token 320ms, sheets 240ms, handoff 600ms */
 @keyframes mela-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
