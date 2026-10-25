@@ -450,3 +450,59 @@ export type FinanceCase = z.infer<typeof FinanceCase>;
 
 export const VoiceStatus = z.object({ cartesia: z.boolean(), voiceId: z.string().nullable() });
 export type VoiceStatus = z.infer<typeof VoiceStatus>;
+
+// ---------- vendor risk (CRS business checks) ----------
+// Set by fixed code rules in src/lib/crs/rules.ts, never by a model. Every reason cites
+// the CRS check and response field it came from. A check that failed or isn't set up
+// makes the result "not_checked"; it is never reported as "clear".
+
+export const VendorRiskLevel = z.enum(["clear", "review", "block"]);
+export type VendorRiskLevel = z.infer<typeof VendorRiskLevel>;
+
+export const VendorRiskCheckName = z.enum(["business_search", "business_credit", "ofac"]);
+export type VendorRiskCheckName = z.infer<typeof VendorRiskCheckName>;
+
+export const VendorRiskReason = z.object({
+  code: z.string(), // e.g. "ofac_match", "name_mismatch", "judgments_on_file"
+  /** info = supporting evidence ("on file since 2019"), never a flag. */
+  severity: z.enum(["block", "review", "info"]),
+  text: z.string(),
+  source: z.object({
+    check: VendorRiskCheckName,
+    field: z.string(), // CRS response field, e.g. "data.executiveElements.judgmentCount"
+    value: z.union([z.string(), z.number(), z.boolean()]).optional(),
+    requestId: z.string().optional(), // CRS RequestID header
+  }),
+});
+export type VendorRiskReason = z.infer<typeof VendorRiskReason>;
+
+export const VendorRiskCheck = z.object({
+  check: VendorRiskCheckName,
+  status: z.enum(["ok", "no_match", "error", "not_configured", "skipped"]),
+  detail: z.string().optional(),
+  requestId: z.string().optional(),
+  latencyMs: z.number().optional(),
+  attempts: z.number().int().min(0).max(2),
+});
+export type VendorRiskCheck = z.infer<typeof VendorRiskCheck>;
+
+export const VendorRisk = z.object({
+  vendorId: z.string(),
+  /** not_checked = at least one check failed and nothing found blocks; level is then null. */
+  status: z.enum(["checked", "not_checked"]),
+  level: VendorRiskLevel.nullable(),
+  reasons: z.array(VendorRiskReason),
+  checks: z.array(VendorRiskCheck),
+  /** The business CRS matched, if any. Business fields only. */
+  business: z
+    .object({ name: z.string(), city: z.string().optional(), state: z.string().optional(), onFileSince: z.string().optional() })
+    .nullable(),
+  /** The name Mela searched for. */
+  searchedName: z.string(),
+  notCheckedReason: z.string().optional(),
+  checkedAt: z.string(),
+  /** checkedAt + 7 days. After this the payment gate asks for a re-check. */
+  freshUntil: z.string(),
+  origin: DataOrigin,
+});
+export type VendorRisk = z.infer<typeof VendorRisk>;
