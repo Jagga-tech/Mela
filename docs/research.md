@@ -27,44 +27,23 @@ Also here: LLM extraction (`extract.ts`), quote verification (`verify.ts`), Apif
 | `scripts/break-things.ts` | Logs raw Bright Data responses for bad key, bad zone, 404, etc. |
 | `scripts/try-parks.ts` | List SF parks from DataSF. No keys needed. |
 | `scripts/try-research.ts` | The whole pipeline on real pages. Prints the status timeline and a facts table. |
-| `tests/research/*.test.ts` | 120 tests using fakes, no network or credits. |
+| `tests/research/*.test.ts` | 131 tests using fakes, no network or credits. |
 
-## Add it to the repo
+## How the app uses it
 
-1. Copy `src/lib/research/`, `scripts/`, and `tests/research/` into the Next.js repo root. If the repo uses `src/`, put `lib/` under `src/`; the scripts and tests use relative imports, so fix those two paths.
-2. Install:
-   ```bash
-   npm install zod server-only @anthropic-ai/sdk apify-client
-   npm install -D tsx typescript @types/node
-   ```
-   Works with zod 3 or 4.
-3. Add these to `package.json` scripts:
-   ```json
-   "research:fetch": "tsx --conditions=react-server --env-file=.env.local scripts/try-fetch.ts",
-   "research:search": "tsx --conditions=react-server --env-file=.env.local scripts/try-search.ts",
-   "research:break": "tsx --conditions=react-server --env-file=.env.local scripts/break-things.ts",
-   "test:research": "tsx --conditions=react-server --test tests/research/*.test.ts"
-   ```
-   `--conditions=react-server` lets the `server-only` guard pass outside Next.js. Without it, importing a server file throws, which is the point.
-4. Add to `.gitignore`: `.research-out/` (and check `.env.local` is already there).
-5. Put this in `.env.local`:
-   ```bash
-   BRIGHTDATA_API_TOKEN=...          # BRIGHTDATA_API_KEY also works
-   BRIGHTDATA_UNLOCKER_ZONE=web_unlocker1
-   BRIGHTDATA_SERP_ZONE=serp_api1
-   ANTHROPIC_API_KEY=...             # extraction
-   APIFY_TOKEN=...                   # vendors (optional)
-   ```
-6. Run `npm run test:research`. All 120 tests should pass. `npx tsc` should print nothing.
+`POST /api/research {brief}` (`src/app/api/research/route.ts`) starts a job and returns at once; the page polls `GET /api/research/:jobId`, and `DELETE` cancels.
 
-## Tonight, in this order
+| File | Role |
+|---|---|
+| `src/lib/research/job.ts` | One job per confirmed brief. Venues: seed URLs (`data/research-seeds.json`) plus one SERP search for venue sites, directory and `.gov` sites filtered out in code, one page per domain, at most 4. Caterers: Apify near the brief's city, each caterer's own website, at most 3. Every page goes fetch → extract → verify. At most 10 sources. |
+| `src/lib/research/snapshot.ts` | Maps a job into the web app's `ResearchSnapshot` (`src/mela/contracts.ts`): dollars → cents, price wording → `qualifier` (in code), cached rows labeled with their age. |
+| `src/lib/research/jobStore.ts` | Jobs in this process's memory (`getJob`, `listJobs`). Finance and calls read vendors and facts from here, so run one long-lived server (`npm start`). |
 
-1. **`npm run research:break`** prints the raw response for each failure case next to how `classify.ts` read it. If a row's classification looks wrong, fix the tables in `classify.ts` and add a case to `classify.test.ts`. The JSON log goes to `.research-out/`.
-2. **`npm run research:fetch -- --find "60 days" --find '$85'`** fetches the SF Rec & Park special-event page, saves the markdown, and tells you whether each phrase is on the page. If they're missing, check whether the facts are in a linked PDF.
-3. **`npm run research:fetch -- <url> --soft 1000`** should show `fetching → slow → found`.
-4. **`npm run research:search`** should end `found` with sfrecpark.org or sf.gov hits. A nonsense query should end `empty`.
+## Calibration scripts
 
-Two seed URLs to try: `https://sfrecpark.org/541/Special-Event-Application-Information` and `https://www.sf.gov/fees-for-outdoor-special-event-permitting`.
+1. **`npm run research:break`** prints the raw response for each failure case next to how `classify.ts` read it. The JSON log goes to `.research-out/`.
+2. **`npm run research:fetch -- <url> --find "capacity"`** fetches one page, saves the markdown, and says whether each phrase is on it. Add `--soft 1000` to see `fetching → slow → found`.
+3. **`npm run research:search`** should end `found`; a nonsense query should end `empty`.
 
 ## Running the whole pipeline
 
@@ -75,41 +54,6 @@ npm run research:run -- --url <venue page> --name "<venue name>" --vendor "quinc
 Each source row goes `queued → fetching (→ slow) → extracting → found | partial`, or ends `error` / `blocked` / `empty`. `partial` means the page was read but some fields are unknown; the row's `error` says how many. The full `ResearchResult` is saved to `.research-out/`.
 
 Run it once with `--fresh` and a bad Bright Data key: that's the ablation test. Every fact must come back `unknown` / `source_failed`. (`pipeline.test.ts` checks the same thing offline.)
-
-## Wiring it into the backend
-
-`onStatus` gets a fresh copy of the source on every change. The backend passes a function that **upserts by `id`**; the frontend polls that table. Updates arrive one at a time and in order, and the final one is written before `fetchPage` returns.
-
-```ts
-import { checkResearchConfig, fetchPage, newSource, runResearch, searchOfficialPages, type ResearchSource } from "@/lib/research";
-
-// Simplest: the orchestrator does everything.
-const result = await runResearch(
-  { eventId, targets, vendorQueries: ["quinceañera caterer"] },
-  {
-    onSource: (s) => db.upsertSource(eventId, s), // the 1–2 s poll reads these
-    onFacts: (facts) => db.insertFacts(eventId, facts),
-    onVendors: (vendors) => db.insertVendors(eventId, vendors),
-  },
-);
-// result is the ResearchResult for GET /events/:id/results
-
-// Or the lower-level pieces, e.g. official pages from search:
-export async function runOfficialResearch(eventId: string, save: (eventId: string, s: ResearchSource) => Promise<void>) {
-  checkResearchConfig(); // throws on missing env before any rows exist
-  const onStatus = (s: ResearchSource) => save(eventId, s);
-
-  const { hits } = await searchOfficialPages("San Francisco park special event permit", onStatus);
-
-  const sources = hits.map((h) => newSource({ url: h.url, provider: "bd_unlocker", sourceType: "official_city" }));
-  await Promise.all(sources.map(onStatus)); // show them as "queued" right away
-
-  const pages = await Promise.all(sources.map((s) => fetchPage(s, onStatus)));
-  return pages; // pages[i].markdown goes to extraction (next step)
-}
-```
-
-Client components import types from `@/src/lib/research/contract`, never from `@/lib/research`.
 
 ## How failures are classified
 

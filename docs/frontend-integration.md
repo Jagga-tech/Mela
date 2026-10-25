@@ -50,14 +50,14 @@ All bodies and responses are validated against `src/mela/contracts.ts`. Status c
 |---|---|---|---|---|---|
 | Intake (text/voice transcript) | `MelaProvider.say` | `POST /api/intake` `{text, brief\|null, answering?}` → `IntakeResult` | Tanush (route) over Chanpreet's intake agent | **Built on this branch.** Not verified live (no key) | `ANTHROPIC_API_KEY=… NEXT_PUBLIC_MELA_LIVE=intake npm run dev`, then type a description |
 | Voice | `Composer` / `useVoice` | `GET /api/voice/status`, `POST /api/voice/transcribe` (multipart `file`), `POST /api/voice/speak` `{text}` → mp3 | Tanush | **Built.** Returns 503 without a key (verified). Real Cartesia not yet verified | Set `CARTESIA_API_KEY`, click *Talk to Mela*, toggle *Mela speaks* |
-| Research start | `startResearch` | `POST /api/research` `{brief}` → `ResearchSnapshot` | Matthew (+ orchestrator) | **Pending.** Demo replays a recorded run | `NEXT_PUBLIC_MELA_LIVE=research`, confirm the brief |
-| Research poll / cancel | `DiscoverScreen` (polls every 450 ms while `job.status==="running"`) | `GET /api/research/:jobId` → `ResearchSnapshot` · `DELETE /api/research/:jobId` | Matthew | **Pending** | same |
-| Call plan | `prepareCall` | `POST /api/calls/plans` `{brief, vendorId}` → `CallPlan` | Chanpreet | **Pending.** Demo builds the plan locally | `NEXT_PUBLIC_MELA_LIVE=calls` |
-| Call approval | `approveAndCall` | `POST /api/calls/approvals` `{planId, planVersion, scriptHash, approvedBy}` → `CallApproval` | Chanpreet | **Pending** | |
-| Place call (one attempt) | `approveAndCall` | `POST /api/calls` `{planId, approvalId}` → `{attempt, approval}`. **Must run `checkCallGate`** | Chanpreet | **Pending.** `src/integrations/cartesia.ts` is still a stub | |
-| Call status | `ContactScreen` (polls every 500 ms) | `GET /api/calls/:attemptId` → `{attempt, outcome\|null}` | Chanpreet | **Pending** | |
-| Finance case | `openFinance` | `POST /api/finance/cases` `{briefId, venueId}` → `FinanceCase` | Chanpreet | **Pending.** The demo runs `domain/finance.ts` in the browser | `NEXT_PUBLIC_MELA_LIVE=finance` |
-| Manager decision | `decide` | `POST /api/finance/cases/:id/decisions` `{decision, reason, actor}` → `FinanceCase` | Chanpreet | **Pending** | |
+| Research start | `startResearch` | `POST /api/research` `{brief}` → `ResearchSnapshot` | Matthew | **Built** (`src/lib/research/job.ts`). Bright Data SERP + Unlocker, Apify, Claude extraction, quotes verified in code | `NEXT_PUBLIC_MELA_LIVE=research`, confirm the brief |
+| Research poll / cancel | `DiscoverScreen` (polls every 450 ms while `job.status==="running"`) | `GET /api/research/:jobId` → `ResearchSnapshot` · `DELETE /api/research/:jobId` | Matthew | **Built** | same |
+| Call plan | `prepareCall` | `POST /api/calls/plans` `{brief, vendorId}` → `CallPlan` | Matthew | **Built** (`src/lib/calls`). Role-play number only (`MELA_ROLEPLAY_PHONE`) | `NEXT_PUBLIC_MELA_LIVE=calls` |
+| Call approval | `approveAndCall` | `POST /api/calls/approvals` `{planId, planVersion, scriptHash, approvedBy}` → `CallApproval` | Matthew | **Built.** Stored server-side | |
+| Place call (one attempt) | `approveAndCall` | `POST /api/calls` `{planId, approvalId}` → `{attempt, approval}`. **Must run `checkCallGate`** | Matthew | **Built.** Cartesia `POST /agents/calls`; the server re-runs `checkCallGate` on its stored approval | |
+| Call status | `ContactScreen` (polls every 500 ms) | `GET /api/calls/:attemptId` → `{attempt, outcome\|null}` | Matthew | **Built.** Answers matched to the transcript in code | |
+| Finance case | `openFinance` | `POST /api/finance/cases` `{briefId, venueId}` → `FinanceCase` | Matthew | **Built** (`src/lib/finance`). Quote from live published prices; invoice simulated; Stripe test payment behind the CRS check | `NEXT_PUBLIC_MELA_LIVE=finance` |
+| Manager decision | `decide` | `POST /api/finance/cases/:id/decisions` `{decision, reason, actor}` → `FinanceCase` | Matthew | **Built** | |
 
 The frontend does **not** call `POST /api/events`, `/answer` or `/dev/run-demo`. They start the autonomous flow (a host confirm call, then vendor calls, a text-code approval, and Stripe test deposits). That conflicts with the plan's rule of "host approves each action, no payment" (§7).
 
