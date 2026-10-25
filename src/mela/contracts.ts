@@ -404,6 +404,31 @@ export const ManagerDecision = z.object({
 });
 export type ManagerDecision = z.infer<typeof ManagerDecision>;
 
+/**
+ * Optional Stripe TEST-mode payment for a released draft. Separate from PaymentDraft on purpose:
+ * the draft still never reaches a "paid" state, and no real money moves (test keys only).
+ */
+export const STRIPE_TEST_LABEL = "Stripe test mode · no real money moves";
+export const StripeTestPayment = z.object({
+  id: z.string(),
+  paymentDraftId: z.string(),
+  amountCents: z.number().int().positive(),
+  currency: z.literal("usd"),
+  provider: z.literal("stripe_test"),
+  livemode: z.literal(false),
+  /** pending = in flight; unknown = Stripe didn't answer clearly (safe to retry: same idempotency key). */
+  status: z.enum(["pending", "succeeded", "failed", "unknown"]),
+  stripePaymentIntentId: z.string().optional(),
+  idempotencyKey: z.string(),
+  attempts: z.number().int().min(1).max(2),
+  requestedBy: Actor,
+  requestedAt: z.string(),
+  completedAt: z.string().optional(),
+  failureReason: z.string().optional(),
+  label: z.literal(STRIPE_TEST_LABEL),
+});
+export type StripeTestPayment = z.infer<typeof StripeTestPayment>;
+
 export const FinanceCase = z.object({
   id: z.string(),
   eventLabel: z.string(),
@@ -418,6 +443,8 @@ export const FinanceCase = z.object({
   decisions: z.array(ManagerDecision),
   audit: z.array(AuditEvent),
   origin: DataOrigin,
+  /** Absent until a human sends a Stripe test payment for a released draft. */
+  testPayment: StripeTestPayment.optional(),
 });
 export type FinanceCase = z.infer<typeof FinanceCase>;
 
