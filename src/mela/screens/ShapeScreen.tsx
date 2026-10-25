@@ -20,7 +20,7 @@ export function ShapeScreen() {
   const firstField = useRef<HTMLButtonElement>(null);
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)]">
       <section aria-labelledby="brief-h" className="anim-rise">
         <SectionLabel>Event brief · built from your words</SectionLabel>
         <h1 id="brief-h" tabIndex={-1} className="mt-2 font-serif text-[34px] leading-[1.1] outline-none">
@@ -228,7 +228,7 @@ function Conversation() {
   const orb = busy === "intake" ? "thinking" : voice.phase === "speaking" ? "speaking" : q ? "uncertain" : state.brief && !confirmationBlockers(state.brief).length ? "succeeded" : "idle";
   return (
     <section aria-labelledby="chat-h" className="anim-rise flex flex-col rounded-3xl border border-line bg-surface lg:sticky lg:top-24 lg:max-h-[calc(100vh-120px)]" style={{ animationDelay: "120ms" }}>
-      <div className="flex items-center gap-3 border-b border-line px-5 py-4">
+      <div className="flex items-center gap-3 border-b border-line px-6 py-4">
         <MelaOrb state={orb} size={44} />
         <div className="flex-1">
           <h2 id="chat-h" className="font-medium">Talking with Mela</h2>
@@ -241,22 +241,36 @@ function Conversation() {
           </label>
         )}
       </div>
-      <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4" aria-live="polite" aria-relevant="additions">
+      <div className="min-h-[260px] flex-1 space-y-5 overflow-y-auto px-6 py-6" aria-live="polite" aria-relevant="additions">
+        {state.messages.length === 0 && <p className="pt-6 text-center text-[14px] text-faint">Tell Mela about your event and she&apos;ll ask only what she needs.</p>}
         {state.messages.map((m) => (
-          <div key={m.id} className={`anim-rise flex ${m.from === "host" ? "justify-end" : "justify-start"}`}>
-            <p className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-[15px] leading-6 ${m.from === "host" ? "bg-primary text-white" : "bg-app"}`}>
+          <div key={m.id} className={`anim-rise flex flex-col gap-1 ${m.from === "host" ? "items-end" : "items-start"}`}>
+            <span className="px-1 text-[11px] font-medium uppercase tracking-wide text-faint" aria-hidden>{m.from === "host" ? "You" : "Mela"}</span>
+            <p className={`max-w-[88%] whitespace-pre-wrap px-4 py-3 text-[15px] leading-[1.6] ${m.from === "host" ? "rounded-[20px] rounded-br-md bg-primary text-white" : "rounded-[20px] rounded-bl-md border border-line bg-app text-fg"}`}>
               <span className="sr-only">{m.from === "host" ? "You said: " : "Mela said: "}</span>
               {m.text}
             </p>
           </div>
         ))}
-        {busy === "intake" && <p className="text-[13px] text-faint" role="status">Mela is reading that…</p>}
+        {busy === "intake" && (
+          <div className="flex items-center gap-2 px-1 text-[13px] text-faint" role="status">
+            <span className="flex gap-1" aria-hidden>
+              {[0, 150, 300].map((d) => <span key={d} className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" style={{ animationDelay: `${d}ms` }} />)}
+            </span>
+            Mela is reading that…
+          </div>
+        )}
         <div ref={end} />
       </div>
-      <div className="border-t border-line p-4">
+      <div className="border-t border-line px-4 pb-4 pt-4">
         {q?.options && (
-          <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label={q.question}>
-            {q.options.map((o) => <Button key={o.value} variant="secondary" size="sm" onClick={() => say(o.label)} disabled={!!busy}>{o.label}</Button>)}
+          <div className="mb-3 flex flex-wrap gap-2 px-1" role="group" aria-label={q.question}>
+            {q.options.map((o) => (
+              <button key={o.value} type="button" onClick={() => say(o.label)} disabled={!!busy}
+                className="rounded-full border border-line bg-surface px-4 py-2 text-[14px] text-fg transition-colors hover:border-primary/40 hover:bg-primary-soft disabled:cursor-not-allowed disabled:text-faint">
+                {o.label}
+              </button>
+            ))}
           </div>
         )}
         <Composer onSend={say} busy={busy === "intake"} placeholder={q ? q.question : "Add or change anything…"} />
