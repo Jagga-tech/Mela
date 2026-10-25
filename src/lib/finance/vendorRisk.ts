@@ -5,3 +5,6 @@
 export type VendorRiskGate = (vendorId: string) => Promise<{ ok: true } | { ok: false; reason: string }>;
 
 export const vendorCheckNotConnected: VendorRiskGate = async () => ({ ok: false, reason: "Vendor check not connected" });
+
+/** The CRS gate: ok only for a fresh `clear` result. Imported lazily, like the research modules. */
+export const crsVendorRiskGate: VendorRiskGate = async (vendorId) => (await import("@/lib/crs/gate")).vendorRiskGate(vendorId);

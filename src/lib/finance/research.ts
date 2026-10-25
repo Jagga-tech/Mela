@@ -11,8 +11,7 @@ export interface LiveResearch {
  * With a jobId, that job (if it belongs to the brief). Without one, the most recently started job for the brief.
  *
  * The research modules are "server-only", so they are imported lazily: route tests swap this function out
- * (see deps.ts) and never load them. The jobStore has no "list jobs" export, so the briefId scan reads the
- * same globalThis map jobStore.ts keeps (__melaResearchJobs). If that module gains a lookup by brief, use it.
+ * (see deps.ts) and never load them.
  */
 export async function findLiveResearch(briefId: string, jobId?: string): Promise<LiveResearch | undefined> {
   const store = await import("@/lib/research/jobStore");
@@ -22,9 +21,7 @@ export async function findLiveResearch(briefId: string, jobId?: string): Promise
     job = store.getJob(jobId);
     if (job && job.brief.id !== briefId) job = undefined;
   } else {
-    const all = (globalThis as { __melaResearchJobs?: Map<string, JobRecord> }).__melaResearchJobs;
-    // Map order is insertion order, so the last match is the most recently started job.
-    for (const j of all?.values() ?? []) if (j.brief.id === briefId) job = j;
+    job = store.listJobs().find((j) => j.brief.id === briefId);
   }
   return job ? { brief: job.brief, snapshot: toSnapshot(job) } : undefined;
 }

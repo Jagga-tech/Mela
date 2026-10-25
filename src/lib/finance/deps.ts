@@ -1,6 +1,6 @@
 import { stripeTestCharge, type TestCharge } from "@/integrations/pay";
 import { findLiveResearch, type LiveResearch } from "./research";
-import { vendorCheckNotConnected, type VendorRiskGate } from "./vendorRisk";
+import { crsVendorRiskGate, type VendorRiskGate } from "./vendorRisk";
 
 // What the finance routes depend on, swappable in tests (and where the CRS vendor check plugs in).
 // Env vars are not read here: the routes read STRIPE_SECRET_KEY and pass it in.
@@ -16,7 +16,7 @@ export interface FinanceDeps {
 const defaults: FinanceDeps = {
   findResearch: findLiveResearch,
   stripeCharge: (key) => stripeTestCharge(key),
-  vendorRiskGate: vendorCheckNotConnected,
+  vendorRiskGate: crsVendorRiskGate,
   now: () => new Date(),
 };
 

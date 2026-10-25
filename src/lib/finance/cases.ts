@@ -213,7 +213,7 @@ export async function sendTestPayment(caseId: string, actor: Actor, deps: TestPa
   fc = deps.load(caseId) ?? fc;
   if (!gate.ok) {
     deps.save(withAudit(fc, ev(deps.now(), SYSTEM, `Stripe test payment for ${draft.id} refused: ${gate.reason}`, [draft.id, fc.quote.vendorId])));
-    throw new FinanceError(409, `No test payment: ${gate.reason}. ${fc.quote.vendorName} has to pass the vendor check first.`);
+    throw new FinanceError(409, `No test payment: ${gate.reason.replace(/\.$/, "")}. ${fc.quote.vendorName} has to pass the vendor check first.`);
   }
   // Re-check after the await: another request may have started one meanwhile.
   if (fc.testPayment?.status === "pending" || fc.testPayment?.status === "succeeded") {

@@ -312,13 +312,14 @@ test("Stripe: no key is 'not connected'; live keys are refused before any reques
   assert.equal(after.testPayment, undefined);
 });
 
-test("the vendor risk gate refuses by default ('Vendor check not connected') and the refusal is audited", async () => {
+test("by default the CRS gate refuses an unchecked vendor, and the refusal is audited", async () => {
   process.env.STRIPE_SECRET_KEY = "sk_test_x";
   const seen = fakeStripe([{ json: { id: "pi_1", status: "succeeded", livemode: false } }]);
   const fc = await released();
   let r = await call(testPayRoute(post({ actor: manager }), params(fc.id)));
   assert.equal(r.status, 409);
-  assert.match(r.json.error!, /Vendor check not connected/);
+  assert.match(r.json.error!, /hasn't been checked with CRS/);
+  assert.doesNotMatch(r.json.error!, /\.\./);
   assert.equal(seen.length, 0);
 
   const checked: string[] = [];

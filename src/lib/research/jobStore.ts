@@ -23,6 +23,11 @@ export function getJob(id: string): JobRecord | undefined {
   return jobs.get(id);
 }
 
+/** Every job on this server, newest first. */
+export function listJobs(): JobRecord[] {
+  return [...jobs.values()].reverse();
+}
+
 /**
  * Seed venue URLs per city, from data/research-seeds.json. URLs and names only:
  * every fact still comes from a live read of the page.
