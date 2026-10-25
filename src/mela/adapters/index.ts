@@ -29,9 +29,9 @@ export function createService(raw = process.env.NEXT_PUBLIC_MELA_LIVE): MelaServ
     getCall: pick("calls", "getCall"),
     openFinanceCase: pick("finance", "openFinanceCase"),
     decideFinance: pick("finance", "decideFinance"),
-    // voice always goes through this app's own /api/voice routes; they report whether Cartesia is configured
-    voiceStatus: demo.voiceStatus,
-    transcribe: demo.transcribe,
-    speak: demo.speak,
+    // Voice always goes through this app's own /api/voice routes; they report whether Cartesia is configured.
+    voiceStatus: api.voiceStatus,
+    transcribe: api.transcribe,
+    speak: api.speak,
   };
 }
