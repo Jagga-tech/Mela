@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useMela } from "../state/MelaProvider";
 import { MelaOrb, type OrbState } from "../ui/MelaOrb";
 import { Composer } from "../ui/Composer";
+import { Button } from "../ui/primitives";
 import type { VoicePhase } from "../ui/useVoice";
 import * as fx from "../fixtures/oakland-baby-shower";
 
@@ -14,30 +15,30 @@ export function WelcomeScreen() {
   const anyLive = Object.values(service.live).some(Boolean);
   return (
     <div className="on-night relative min-h-screen overflow-hidden bg-night text-white">
-      <div aria-hidden className="pointer-events-none absolute left-1/2 top-[-12%] h-[620px] w-[620px] -translate-x-1/2 rounded-full opacity-70 blur-3xl" style={{ background: "radial-gradient(circle, #8f72c9 0%, rgba(143,114,201,0.25) 45%, transparent 70%)" }} />
-      <div aria-hidden className="pointer-events-none absolute bottom-[-20%] right-[-10%] h-[520px] w-[520px] rounded-full opacity-60 blur-3xl" style={{ background: "radial-gradient(circle, #c2571f 0%, rgba(194,87,31,0.25) 45%, transparent 70%)" }} />
-      <header className="relative z-10 mx-auto flex max-w-[1280px] items-center justify-between px-6 py-6 sm:px-10">
-        <span className="font-serif text-[30px] leading-none">mela.</span>
-        {state.brief && <button className="rounded-xl border border-white/20 px-3 py-2 text-[13px] hover:bg-white/10" onClick={() => go("shape")}>Continue your event →</button>}
+      <div aria-hidden className="pointer-events-none absolute left-1/2 top-[-18%] h-[560px] w-[560px] max-w-[140vw] -translate-x-1/2 rounded-full opacity-60 blur-3xl" style={{ background: "radial-gradient(circle, #8f72c9 0%, rgba(143,114,201,0.22) 45%, transparent 70%)" }} />
+      <header className="relative z-10 mx-auto flex max-w-[1200px] items-center justify-between px-5 py-5 sm:px-10 sm:py-6">
+        <span className="font-serif text-[26px] leading-none">mela.</span>
+        {state.brief && <Button variant="onNight" size="sm" iconRight="arrow" onClick={() => go("shape")}>Continue your event</Button>}
       </header>
-      <main id="main" className="relative z-10 mx-auto flex max-w-[760px] flex-col items-center px-6 pb-16 pt-6 text-center sm:pt-10">
-        <div className="anim-rise"><MelaOrb state={orb} size={132} onNight /></div>
-        <p className="anim-rise mt-6 text-[17px] text-white/80" style={{ animationDelay: "80ms" }}>Hello, I&apos;m Mela.</p>
-        <h1 tabIndex={-1} className="anim-rise mt-2 font-serif text-[40px] leading-[1.05] tracking-[-0.01em] outline-none sm:text-[56px]" style={{ animationDelay: "140ms" }}>
+      <main id="main" className="relative z-10 mx-auto flex max-w-[640px] flex-col items-center px-5 pb-14 pt-4 text-center sm:pt-10">
+        <div className="anim-rise"><MelaOrb state={orb} size={104} onNight /></div>
+        <p className="anim-rise mt-6 text-[15px] text-white/70" style={{ animationDelay: "60ms" }}>Hello, I&apos;m Mela.</p>
+        <h1 tabIndex={-1} className="t-display anim-rise mt-2 outline-none sm:text-[50px]" style={{ animationDelay: "100ms" }}>
           How can I help you plan the event of your dreams?
         </h1>
-        <p className="anim-rise mt-5 max-w-[560px] text-[17px] leading-7 text-white/75" style={{ animationDelay: "200ms" }}>
-          Tell me what you are imagining. I will help you find thoughtful options, and you decide what happens next.
+        <p className="anim-rise mt-4 max-w-[480px] text-[16px] leading-7 text-white/70" style={{ animationDelay: "160ms" }}>
+          Tell Mela about your event. She finds options with sources, and you decide what happens next.
         </p>
-        <div className="anim-rise mt-10 w-full" style={{ animationDelay: "260ms" }}>
-          <Composer onNight autoFocus onSend={say} busy={busy === "intake"} placeholder="Type your dream event here..." onVoicePhase={setPhase} />
+        <div className="anim-rise mt-9 w-full" style={{ animationDelay: "220ms" }}>
+          <Composer onNight autoFocus onSend={say} busy={busy === "intake"} placeholder="Type your dream event here…" onVoicePhase={setPhase} />
         </div>
-        <button className="mt-5 text-[13px] text-white/70 underline decoration-white/30 underline-offset-4 hover:text-white" onClick={() => say(fx.scenario.exampleText)}>
-          Try the demo example: {fx.scenario.title}, 75–100 guests
-        </button>
-        <p className="mt-14 max-w-[600px] font-mono text-[11px] leading-5 tracking-wide text-white/50">
+        <div className="anim-rise mt-6 flex flex-col items-center gap-2" style={{ animationDelay: "260ms" }}>
+          <Button variant="onNight" iconRight="arrow" onClick={() => say(fx.scenario.exampleText)} disabled={busy === "intake"}>Try the demo example</Button>
+          <span className="text-[13px] text-white/55">{fx.scenario.title}, 75–100 guests</span>
+        </div>
+        <p className="mt-14 max-w-[460px] text-[12px] leading-5 text-white/50">
           Mela never books, sends, calls or pays without your approval.{" "}
-          {anyLive ? "Some features are connected live; each result shows where it came from." : "Demo mode: research, calls and finance use clearly labeled fictional fixtures."}
+          {anyLive ? "Some features are connected live; each result shows where it came from." : "Demo mode: research, calls and finance use clearly labeled fictional data."}
         </p>
       </main>
     </div>

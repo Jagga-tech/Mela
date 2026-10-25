@@ -1,5 +1,6 @@
 // Mela Orb (Figma component set 88:137). Ten states; the face carries the meaning, motion only reinforces it.
 // prefers-reduced-motion: the orb is static (see .orb-motion in globals.css).
+import { useId } from "react";
 export type OrbState = "idle" | "inviting" | "listening" | "thinking" | "speaking" | "succeeded" | "uncertain" | "caution" | "handoff" | "error";
 
 const LABEL: Record<OrbState, string> = {
@@ -65,6 +66,7 @@ const BADGE: Partial<Record<OrbState, { fg: string; path: string }>> = {
 export function MelaOrb({ state = "idle", size = 96, onNight = false, decorative = false }: { state?: OrbState; size?: number; onNight?: boolean; decorative?: boolean }) {
   const ring = RING[state];
   const badge = BADGE[state];
+  const gid = `orb-body-${useId().replace(/:/g, "")}`;
   return (
     <span
       role={decorative ? undefined : "img"}
@@ -75,7 +77,7 @@ export function MelaOrb({ state = "idle", size = 96, onNight = false, decorative
     >
       <svg viewBox="0 0 120 120" width={size} height={size} className="orb-motion overflow-visible">
         <defs>
-          <radialGradient id="orb-body" cx="40%" cy="35%" r="70%">
+          <radialGradient id={gid} cx="40%" cy="35%" r="70%">
             <stop offset="0%" stopColor="#b9a3e6" />
             <stop offset="100%" stopColor="#8466c4" />
           </radialGradient>
@@ -92,7 +94,7 @@ export function MelaOrb({ state = "idle", size = 96, onNight = false, decorative
             style={state === "thinking" ? { transformOrigin: "60px 60px", animation: "mela-spin 6s linear infinite" } : undefined} />
         )}
         <g style={{ transformOrigin: "60px 60px", animation: state === "idle" || state === "inviting" ? "mela-breathe 4.5s ease-in-out infinite" : undefined }}>
-          <circle cx="60" cy="60" r="45" fill="url(#orb-body)" />
+          <circle cx="60" cy="60" r="45" fill={`url(#${gid})`} />
           <ellipse cx="44" cy="36" rx="15" ry="9" fill="#fff" opacity="0.32" />
           <ellipse cx="40" cy="71" rx="6" ry="3.4" fill="#f4a49c" opacity="0.75" />
           <ellipse cx="80" cy="71" rx="6" ry="3.4" fill="#f4a49c" opacity="0.75" />
