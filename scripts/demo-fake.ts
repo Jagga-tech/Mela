@@ -31,7 +31,7 @@ async function main() {
   };
   const hostTexts = (e: Event) => e.messages.filter((m) => m.to === HOST && m.direction === "out").length;
 
-  const { id, missing: first } = await createEvent(TEXT, HOST);
+  const { id, missing: first } = await createEvent(TEXT, HOST, "Priya Sharma");
   const missing = first.length ? (await answerEvent(id, "December 6 2026")).missing : first;
   assert.equal(missing.length, 0, "intake still missing: " + JSON.stringify(missing));
 
