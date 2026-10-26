@@ -1,15 +1,9 @@
-import { randomBytes } from "node:crypto";
-
 export type PayArgs = { amountCents: number; vendorId: string; vendorName: string; idempotencyKey: string };
 export type PayAdapter = {
-  pay(args: PayArgs): Promise<{ ref: string; simulated: boolean }>;
+  pay(args: PayArgs): Promise<{ ref: string }>;
   // a one-time Stripe onboarding URL to text the vendor, or null when the vendor can already receive deposits
   onboardingLink?(vendorId: string, vendorName: string): Promise<string | null>;
 };
-
-export function simulatedPay(): PayAdapter {
-  return { pay: () => new Promise(res => setImmediate(() => res({ ref: "SIM-" + randomBytes(4).toString("hex"), simulated: true }))) };
-}
 
 export class StripeKeyRefused extends Error {
   override name = "StripeKeyRefused";
@@ -78,7 +72,7 @@ export function stripePay(secretKey: string, fetchImpl: typeof fetch = fetch): P
       });
       const j = await api("payment_intents", { method: "POST", body, headers: { "Idempotency-Key": idempotencyKey } });
       if (j.status !== "succeeded") throw new Error(`stripe intent ${j.status}`);
-      return { ref: j.id as string, simulated: false };
+      return { ref: j.id as string };
     },
   };
 }
@@ -124,4 +118,8 @@ export function stripeTestCharge(secretKey: string, fetchImpl: typeof fetch = fe
   };
 }
 
-export function getPayAdapter(): PayAdapter { return process.env.STRIPE_SECRET_KEY ? stripePay(process.env.STRIPE_SECRET_KEY) : simulatedPay(); }
+// The agent flow pays only in Stripe test mode; without a key it refuses rather than pretending.
+export function getPayAdapter(): PayAdapter {
+  if (!process.env.STRIPE_SECRET_KEY) throw new Error("STRIPE_SECRET_KEY is required (test-mode key)");
+  return stripePay(process.env.STRIPE_SECRET_KEY);
+}

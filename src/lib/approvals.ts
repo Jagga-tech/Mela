@@ -1,4 +1,6 @@
 import type { Approval, ApprovalKind, Event } from "./types";
+import { isFromHost } from "@/integrations/phone";
+import { tokens, verbOf } from "./i18n";
 
 export const APPROVAL_TTL_MS = 30 * 60 * 1000;
 
@@ -14,18 +16,13 @@ export function createApproval(event: Event, kind: ApprovalKind, summary: string
 }
 
 export function parseReply(body: string): { verb: "YES" | "NO" | null; code: string | null } {
-  const tokens = body.toLowerCase().replace(/[^a-z0-9]/g, " ").split(/\s+/).filter(Boolean);
-  const first = tokens[0];
-  return { verb: first === "yes" ? "YES" : first === "no" ? "NO" : null, code: tokens.find((t) => /^\d{4}$/.test(t)) ?? null };
+  return { verb: verbOf(body), code: tokens(body).find((t) => /^\d{4}$/.test(t)) ?? null };
 }
 
 export type ReplyOutcome = "approved" | "declined" | "expired" | "wrong_sender" | "no_code" | "unknown_code" | "already_answered";
 
-const digits = (s: string) => s.replace(/\D/g, "");
-export const isHostNumber = (from: string, hostPhone: string) => digits(from) === digits(hostPhone);
-
 export function applyReply(event: Event, from: string, body: string, now: Date): { outcome: ReplyOutcome; approval?: Approval } {
-  if (!isHostNumber(from, event.hostPhone)) return { outcome: "wrong_sender" };
+  if (!isFromHost(from, event.hostPhone)) return { outcome: "wrong_sender" };
   const { verb, code } = parseReply(body);
   if (!verb || !code) return { outcome: "no_code" };
   const approval = event.approvals.find((a) => a.code === code && a.status === "pending") ?? event.approvals.find((a) => a.code === code);

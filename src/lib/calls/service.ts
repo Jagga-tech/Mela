@@ -4,7 +4,7 @@ import { z } from "zod";
 import { CallAttempt as CallAttemptSchema, EventBrief, type CallApproval, type CallAttempt, type CallPlan, type DataOrigin } from "@/mela/contracts";
 import { approveCallPlan, buildCallPlan, checkCallGate, consumeApproval, gateMessage } from "@/mela/domain/calls";
 import { newId } from "@/mela/domain/util";
-import { CartesiaApiError, createOutboundCall, getAgentCall, WebhookEvent, type AgentCall, type FetchFn } from "@/integrations/cartesia";
+import { CartesiaApiError, createOutboundCall, getAgentCall, WebhookEvent, type AgentCall, type FetchFn } from "@/lib/calls/cartesia";
 import { cartesiaCallConfig, digits, NotConnectedError, rolePlayLine, webhookSecret, type Env } from "./config";
 import { openedWithDisclosure, outcomeFromTranscript, toTranscript } from "./outcome";
 import { callStore, firstDelivery, saveApproval, saveAttempt, savePlan, type AttemptRecord } from "./store";

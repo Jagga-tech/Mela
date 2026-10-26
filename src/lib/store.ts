@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { Event, Vendor, VendorCategory } from "@/lib/types";
+import type { Event, Vendor, VendorCategory, VendorRisk } from "@/lib/types";
+import { isFromHost } from "@/integrations/phone";
 
 export type Seed = { vendors: Vendor[];
-  transcripts: { host_confirm: string; host_final: string; vendors: Record<string, string> };
   mandate: { capCents: number; expiresAt: string } };
 export type Store = {
   createEvent(hostPhone: string, hostName?: string): Promise<Event>;
@@ -16,14 +16,22 @@ export type Store = {
   listVendors(category?: VendorCategory): Promise<Vendor[]>;
   getVendor(id: string): Promise<Vendor | null>;
   claimIdempotencyKey(key: string): Promise<boolean>;
+  getVendorRisk(vendorId: string): Promise<VendorRisk | null>;
+  saveVendorRisk(r: VendorRisk): Promise<void>;
   seed: Seed;
 };
-type Data = { events: Record<string, Event>; keys: string[] };
+type Data = { events: Record<string, Event>; keys: string[]; risks?: Record<string, VendorRisk> };
 
-const digits = (s: string) => s.replace(/\D/g, "");
+// events saved before the finance records and the language field existed
+const withDefaults = (e: Event | null): Event | null => {
+  if (e) { e.purchaseOrders ??= []; e.invoices ??= []; e.financeExceptions ??= []; e.language ??= "en"; }
+  return e;
+};
 
 export function fileStore(path = process.env.MELA_STORE ?? "data/store.json"): Store {
   const seed: Seed = JSON.parse(readFileSync(join(process.cwd(), "data/seed.json"), "utf8"));
+  // VENDOR_PHONE_<vendorId> points a seed vendor at a real phone for the live demo
+  for (const v of seed.vendors) v.phone = process.env[`VENDOR_PHONE_${v.id}`] ?? v.phone;
   // ponytail: whole-file JSON store, SpacetimeDB replaces it
   const read = (): Data => existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : { events: {}, keys: [] };
   const write = (d: Data) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, JSON.stringify(d, null, 2)); };
@@ -33,27 +41,31 @@ export function fileStore(path = process.env.MELA_STORE ?? "data/store.json"): S
     async createEvent(hostPhone, hostName) {
       const now = new Date().toISOString(), id = randomUUID();
       const e: Event = { id, hostPhone, ...(hostName ? { hostName } : {}), status: "draft", brief: null, missing: [], shortlist: [], calls: [], quotes: [],
-        approvals: [], payments: [], messages: [], humanTasks: [], research: [], audit: [], createdAt: now, updatedAt: now,
+        approvals: [], payments: [], messages: [], humanTasks: [], research: [], audit: [], purchaseOrders: [], invoices: [], financeExceptions: [], language: "en", createdAt: now, updatedAt: now,
         mandate: { id: randomUUID(), eventId: id, vendorIds: seed.vendors.map(v => v.id), capCents: seed.mandate.capCents,
           spentCents: 0, expiresAt: seed.mandate.expiresAt, status: "approved" } };
       const d = read(); d.events[id] = e; write(d);
       return e;
     },
-    async getEvent(id) { return read().events[id] ?? null; },
+    async getEvent(id) {
+      return withDefaults(read().events[id] ?? null);
+    },
     async saveEvent(e) { const d = read(); e.updatedAt = new Date().toISOString(); d.events[e.id] = e; write(d); },
-    async findEventByCallId(callId) { return events().find(e => e.calls.some(c => c.id === callId)) ?? null; },
+    async findEventByCallId(callId) { return withDefaults(events().find(e => e.calls.some(c => c.id === callId)) ?? null); },
     async findEventByHostPhone(phone) {
       // >= so ties go to the later-inserted event
-      return events().filter(e => digits(e.hostPhone) === digits(phone))
-        .reduce<Event | null>((best, e) => !best || e.updatedAt >= best.updatedAt ? e : best, null);
+      return withDefaults(events().filter(e => isFromHost(phone, e.hostPhone))
+        .reduce<Event | null>((best, e) => !best || e.updatedAt >= best.updatedAt ? e : best, null));
     },
-    async findEventByPendingCode(code) { return events().find(e => e.approvals.some(a => a.status === "pending" && a.code === code)) ?? null; },
+    async findEventByPendingCode(code) { return withDefaults(events().find(e => e.approvals.some(a => a.status === "pending" && a.code === code)) ?? null); },
     async listVendors(category) { return seed.vendors.filter(v => !category || v.category === category); },
     async getVendor(id) { return seed.vendors.find(v => v.id === id) ?? null; },
     async claimIdempotencyKey(key) {
       const d = read(); if (d.keys.includes(key)) return false;
       d.keys.push(key); write(d); return true;
     },
+    async getVendorRisk(vendorId) { return read().risks?.[vendorId] ?? null; },
+    async saveVendorRisk(r) { const d = read(); (d.risks ??= {})[r.vendorId] = r; write(d); },
   };
 }
 

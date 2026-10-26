@@ -1,11 +1,12 @@
 import { test } from "node:test"; import assert from "node:assert/strict";
-import { checkFit, amountToPayCents, budgetCheck } from "@/lib/rules";
-import type { EventBrief, Vendor, VendorQuote, QuoteExtract } from "@/lib/types";
+import { checkFit, amountToPayCents, budgetCheck, vendorRisk, riskIsFresh } from "@/lib/rules";
+import type { EventBrief, Vendor, VendorQuote, QuoteExtract, VendorRisk } from "@/lib/types";
+import type { FraudFinderResult, ReverseResult } from "@/integrations/crs";
 
 const brief = (o: Partial<EventBrief> = {}): EventBrief => ({ eventType: "party", location: "SF", dateWindow: null,
   guestCount: 110, budgetUsd: 12000, accessibility: ["step-free"], dietary: ["vegetarian"], preferences: [], ...o });
 const venue = (o: Partial<Vendor> = {}): Vendor => ({ id: "v", name: "V", category: "venue", phone: "1",
-  capacity: 120, priceHintUsd: null, accessibility: ["step-free"], dietary: [], ...o });
+  capacity: 120, priceHintUsd: null, accessibility: ["step-free"], dietary: [], contactFirstName: "Ana", contactLastName: "Verde", contactPhone: "1", email: null, address: null, language: "en", ...o });
 const ex = (o: Partial<QuoteExtract> = {}): QuoteExtract => ({ available: true, priceUsd: null, depositUsd: null,
   terms: [], evidence: [], openQuestions: [], ...o });
 const q = (id: string, priceUsd: number | null): VendorQuote => ({ vendorId: id, callId: "c", extract: ex({ priceUsd }), createdAt: "" });
@@ -48,4 +49,31 @@ test("budgetCheck", () => {
 test("checkFit tolerates phrasing drift between brief and vendor tags", () => {
   assert.deepEqual(checkFit(brief({ accessibility: ["step-free access"] }), venue({ accessibility: ["step-free"] })), { fit: "fit", conflicts: [], unknowns: [] });
   assert.deepEqual(checkFit(brief({ dietary: ["vegetarian"] }), venue({ category: "catering", accessibility: [], dietary: ["vegetarian options", "halal"] })).conflicts, []);
+});
+
+const ffr = (score: number): FraudFinderResult => ({ risk: { score, phone: { status: "active" }, postal: { last_name_match: "yes" } } });
+const rev = (lastName?: string): ReverseResult => ({ success: true, data: { records: lastName ? [{ firstName: "Ana", lastName }] : [] } });
+
+test("vendorRisk clear / block / review", () => {
+  assert.deepEqual(vendorRisk(ffr(10), rev(" verde "), venue()), { level: "clear", reasons: [] });
+  assert.equal(vendorRisk(ffr(88), rev("Verde"), venue()).level, "block");
+  assert.equal(vendorRisk(ffr(60), rev("Verde"), venue()).level, "review");
+  const u = vendorRisk(null, rev("Verde"), venue());
+  assert.equal(u.level, "review"); assert.ok(u.reasons.some((r) => r.includes("unavailable")));
+  assert.deepEqual(vendorRisk(ffr(88), rev("Verde"), venue()).reasons, ["risk score high"]);
+  assert.deepEqual(vendorRisk(ffr(60), rev("Verde"), venue()).reasons, ["risk score elevated"]);
+  assert.deepEqual(vendorRisk({ risk: { score: 10, phone: { status: "disconnected" } } }, rev("Verde"), venue()).reasons, ["phone not active"]);
+  const nf = vendorRisk(ffr(10), rev(), venue());
+  assert.equal(nf.level, "review"); assert.ok(nf.reasons.includes("phone not found"));
+});
+
+test("vendorRisk: fraud check fine but reverse lookup failed is review, not clear", () => {
+  assert.deepEqual(vendorRisk(ffr(10), null, venue()), { level: "review", reasons: ["phone lookup unavailable"] });
+});
+
+test("riskIsFresh within 7 days only", () => {
+  const now = new Date("2026-10-24T00:00:00Z");
+  const r = (days: number): VendorRisk => ({ vendorId: "v", level: "clear", reasons: [], source: "crs",
+    checkedAt: new Date(now.getTime() - days * 86400000).toISOString() });
+  assert.equal(riskIsFresh(r(8), now), false); assert.equal(riskIsFresh(r(1), now), true); assert.equal(riskIsFresh(null, now), false);
 });

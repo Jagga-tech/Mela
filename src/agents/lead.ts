@@ -5,9 +5,12 @@ import type { AgentSpec } from "@/agents/harness";
 import { findVendors } from "@/agents/vendor";
 import { explain } from "@/agents/explainer";
 import { buildCallScript } from "@/agents/outreach";
+import { translate } from "@/agents/translator";
+import type { Language } from "@/lib/i18n";
 import { checkFit, budgetCheck } from "@/lib/rules";
 import { createApproval } from "@/lib/approvals";
 import { HOST_UPDATES, INTRO, summaryText, type HostUpdate } from "@/lib/notify";
+import { ensureVendorRisk } from "@/lib/vendorRisk";
 import type { Store } from "@/lib/store";
 import type { Channel } from "@/integrations/channel";
 import { EVENT_STATUS_ORDER, type AuditEvent, type Event, type EventStatus, type Vendor, type VendorQuote } from "@/lib/types";
@@ -19,9 +22,12 @@ export type LeadContext = { event: Event; store: Store; channel: Channel; audit:
 const PAST_APPROVAL: EventStatus[] = ["approved", "paying", "paid", "done"];
 export const isPastApproval = (e: Event) => PAST_APPROVAL.includes(e.status);
 
-// Forward-only status. needs_planner may be set from anything before approval.
+// Forward-only status. needs_planner may be set from anything before approval, or while paying (a payment failed).
+// needs_planner is terminal for automated moves: only a planner action leaves it.
 export function advanceStatus(event: Event, next: EventStatus): boolean {
-  const ok = next === "needs_planner" ? !isPastApproval(event) : EVENT_STATUS_ORDER.indexOf(next) > EVENT_STATUS_ORDER.indexOf(event.status);
+  const ok = event.status === "needs_planner" ? false
+    : next === "needs_planner" ? event.status === "paying" || !isPastApproval(event)
+    : EVENT_STATUS_ORDER.indexOf(next) > EVENT_STATUS_ORDER.indexOf(event.status);
   if (ok) event.status = next;
   return ok;
 }
@@ -46,11 +52,13 @@ export function quotesToPay(event: Event, vendors: Vendor[]): VendorQuote[] {
   return CATEGORIES.flatMap((c) => picked.get(c) ?? []);
 }
 
-// Every outbound text goes through here: honors STOP, and the host's first text says Mela is an AI assistant.
-export async function sendText(event: Event, channel: Channel, to: string, body: string) {
+// Every outbound text goes through here: honors STOP, the host's first text says Mela is an AI assistant, and texts
+// go out in the recipient's language (host by default); translation falls back to English, never throws.
+export async function sendText(event: Event, channel: Channel, to: string, english: string, lang: Language = event.language) {
   const toHost = to === event.hostPhone;
   if (toHost && event.textsStopped) { event.audit.push({ at: new Date().toISOString(), actor: "orchestrator", action: "text_suppressed_stop" }); return; }
-  if (toHost && !event.messages.some((m) => m.direction === "out" && m.to === to)) body = `${INTRO}\n\n${body}`;
+  if (toHost && !event.messages.some((m) => m.direction === "out" && m.to === to)) english = `${INTRO}\n\n${english}`;
+  const body = await translate(english, lang, event.audit);
   await channel.text(to, body);
   event.messages.push({ at: new Date().toISOString(), direction: "out", to, body });
 }
@@ -73,9 +81,12 @@ export function makeLeadTools(ctx: LeadContext): BetaRunnableTool<any>[] { // es
         if (!event.brief) return refuse("find_vendors", "no brief");
         const r = await findVendors(store, event.brief, category, ctx.audit);
         if (!r.ok) return refuse("find_vendors", "vendor search failed: " + r.reason);
-        const found = await vendors(r.data.options.map((o) => o.vendorId)); // drops ids the store does not know
-        for (const v of found) {
-          const fit = checkFit(event.brief, v);
+        const found: Vendor[] = [];
+        for (const v of await vendors(r.data.options.map((o) => o.vendorId))) { // drops ids the store does not know
+          const { level: risk } = await ensureVendorRisk(event, v, new Date());
+          if (risk === "block") { log("vendor_hidden", v.id); continue; }
+          found.push(v);
+          const fit = { ...checkFit(event.brief, v), risk };
           const old = event.shortlist.find((s) => s.vendorId === v.id);
           if (old) Object.assign(old, fit);
           else event.shortlist.push({ vendorId: v.id, ...fit, reason: "" });
@@ -132,8 +143,8 @@ export function makeLeadTools(ctx: LeadContext): BetaRunnableTool<any>[] { // es
         const script = await buildCallScript(vendor, event.brief, questions, ctx.audit);
         if (!script.ok) return refuse("call_vendor", "script failed: " + script.reason);
         if (!(await store.claimIdempotencyKey(`${event.id}:call_vendor:${vendorId}`))) return refuse("call_vendor", "duplicate call");
-        const { callId } = await channel.callVendor(event.id, vendorId, script.data);
-        event.calls.push({ id: callId, eventId: event.id, kind: "vendor", vendorId, script: script.data, status: "placed", startedAt: new Date().toISOString() });
+        const { callId, providerCallId } = await channel.callVendor(event.id, vendorId, script.data, event.audit);
+        event.calls.push({ id: callId, providerCallId, eventId: event.id, kind: "vendor", vendorId, script: script.data, status: "placed", startedAt: new Date().toISOString() });
         setStatus(event, "calling");
         await store.saveEvent(event); // persist before the call-ended webhook looks the call up
         ctx.ended = true;
@@ -147,6 +158,7 @@ export function makeLeadTools(ctx: LeadContext): BetaRunnableTool<any>[] { // es
       inputSchema: z.object({ kind: z.literal("plan"), summary: z.string() }),
       run: async ({ kind, summary }) => {
         if (ctx.ended) return refuse("request_approval", "this run already placed a call or requested approval");
+        if (event.status !== "calling" && event.status !== "awaiting_approval") return refuse("request_approval", "cannot request approval while status is " + event.status);
         if (event.approvals.some((a) => a.status === "pending")) return refuse("request_approval", "an approval is already pending");
         const all = await store.listVendors();
         const plan = quotesToPay(event, all);

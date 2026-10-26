@@ -1,7 +1,7 @@
 import type { CallAttempt, CallOutcome, CallPlan } from "@/mela/contracts";
 import { CallOutcome as CallOutcomeSchema } from "@/mela/contracts";
 import { buildOutcome } from "@/mela/domain/calls";
-import type { AgentTranscriptTurn } from "@/integrations/cartesia";
+import type { AgentTranscriptTurn } from "@/lib/calls/cartesia";
 
 // Transcript -> CallOutcome, in code. No model is involved: each answer is the vendor's
 // own words from the turns right after Mela asked that question, and every answer is

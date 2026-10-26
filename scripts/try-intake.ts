@@ -32,7 +32,7 @@ if (first.ok) {
   const venue = await store.getVendor("venue-casa-verde");
   if (venue) {
     console.log(JSON.stringify(await buildCallScript(venue, first.data.brief, ["Is the venue free on the first Saturday of December?", "What is the total price?", "Is a deposit required?"], audit), null, 2));
-    console.log(JSON.stringify(await extractQuote(store.seed.transcripts.vendors["venue-casa-verde"], venue, audit), null, 2));
+    console.log(JSON.stringify(await extractQuote("Agent: Is the venue free on the first Saturday of December? Vendor: Yes, we are open that day. Agent: What is the total price? Vendor: $4,000 for the evening. Agent: Is a deposit required? Vendor: Yes, a $500 deposit holds the date.", venue, audit), null, 2));
   }
 }
 }

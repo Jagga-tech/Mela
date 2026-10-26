@@ -1,5 +1,5 @@
 import { test } from "node:test"; import assert from "node:assert/strict";
-import { fileStore } from "@/lib/store"; import { mkdtempSync } from "node:fs"; import { join } from "node:path"; import { tmpdir } from "node:os";
+import { fileStore } from "@/lib/store"; import { mkdtempSync, writeFileSync } from "node:fs"; import { join } from "node:path"; import { tmpdir } from "node:os";
 const s = fileStore(join(mkdtempSync(join(tmpdir(), "mela-")), "store.json"));
 test("createEvent copies the seeded mandate with all vendor ids", async () => {
   const e = await s.createEvent("+15551234567");
@@ -27,4 +27,39 @@ test("findEventByHostPhone matches digits only, most recent wins", async () => {
   assert.equal((await s.findEventByHostPhone("15559990000"))?.id, b.id);
   assert.notEqual(a.id, b.id);
   assert.equal(await s.findEventByHostPhone("+19998887777"), null);
+});
+test("findEventByHostPhone matches a local-format number against the +1 form", async () => {
+  const e = await s.createEvent("(555) 123-4500");
+  await s.saveEvent(e);
+  assert.equal((await s.findEventByHostPhone("+15551234500"))?.id, e.id);
+});
+test("VENDOR_PHONE_<id> overrides the seed phone when the store loads", async () => {
+  process.env["VENDOR_PHONE_venue-casa-verde"] = "+15557770000";
+  try {
+    const s2 = fileStore(join(mkdtempSync(join(tmpdir(), "mela-")), "store.json"));
+    assert.equal((await s2.getVendor("venue-casa-verde"))?.phone, "+15557770000");
+    assert.equal((await s2.getVendor("venue-casa-verde"))?.contactPhone, "+15550101019"); // CRS persona phone is untouched
+    assert.equal((await s2.getVendor("decor-flor"))?.phone, "+15550000003");
+  } finally { delete process.env["VENDOR_PHONE_venue-casa-verde"]; }
+});
+
+test("saveVendorRisk then getVendorRisk round-trips; unknown is null", async () => {
+  const r = { vendorId: "venue-casa-verde", level: "clear" as const, reasons: [], checkedAt: new Date().toISOString(), source: "crs" as const };
+  await s.saveVendorRisk(r);
+  assert.deepEqual(await s.getVendorRisk("venue-casa-verde"), r);
+  assert.equal(await s.getVendorRisk("none"), null);
+});
+
+test("every event finder backfills language and finance arrays on old events", async () => {
+  const path = join(mkdtempSync(join(tmpdir(), "mela-")), "store.json");
+  const old = { id: "old1", hostPhone: "+15550001111", updatedAt: "2026-01-01T00:00:00Z",
+    calls: [{ id: "call-old" }], approvals: [{ status: "pending", code: "7777" }] };
+  writeFileSync(path, JSON.stringify({ events: { old1: old }, keys: [] }));
+  const st = fileStore(path);
+  for (const e of [await st.getEvent("old1"), await st.findEventByCallId("call-old"),
+    await st.findEventByHostPhone("+15550001111"), await st.findEventByPendingCode("7777")]) {
+    assert.ok(e);
+    assert.equal(e.language, "en");
+    assert.deepEqual([e.purchaseOrders, e.invoices, e.financeExceptions], [[], [], []]);
+  }
 });

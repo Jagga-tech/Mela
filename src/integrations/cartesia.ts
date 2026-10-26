@@ -1,191 +1,166 @@
 import { randomUUID } from "node:crypto";
-import { z } from "zod";
 import type { Store } from "@/lib/store";
-import type { CallScript } from "@/lib/types";
+import type { AuditEvent, CallKind, CallScript } from "@/lib/types";
 import type { Channel, OnCallEnded } from "@/integrations/channel";
+import { normalizePhone } from "@/integrations/phone";
+import { asLanguage, DISCLOSURES, LANGUAGE_NAMES, type Language } from "@/lib/i18n";
+import { translate } from "@/agents/translator";
+import type { Send } from "@/agents/harness";
 
-// ---------------------------------------------------------------------------
-// Cartesia agent calls (server only). Every request shape below comes from the docs:
-//   Outbound call:  POST /agents/calls
-//     https://docs.cartesia.ai/line/integrations/telephony/outbound-dialing
-//     https://docs.cartesia.ai/api-reference/agents/calls/create-outbound-call
-//   Call status + transcript:  GET /agents/calls/{call_id}
-//     https://docs.cartesia.ai/api-reference/agents/calls/get-call
-//   Webhooks (call_started / call_turn / call_completed / call_failed, x-webhook-secret):
-//     https://docs.cartesia.ai/line/infrastructure/observability#webhooks
-//   Per-call values for the agent's greeting and instructions:
-//     https://docs.cartesia.ai/agents/dynamic-variables
-// ---------------------------------------------------------------------------
+export const LEGACY_AGENT_NAME = "mela-caller";
+export const agentName = (lang: Language) => `mela-caller-${lang}`;
+const SETUP = "Cartesia not configured: run npm run cartesia:setup";
+export const AGENT_INSTRUCTIONS = `You are Mela, an AI assistant placing a phone call on behalf of a client who is planning an event. Say you are an AI assistant if asked. This call is recorded and transcribed.
 
-export const CARTESIA_API = "https://api.cartesia.ai";
-export const CARTESIA_CALLS_VERSION = "2026-08-14";
+Purpose, from the call kind "{{call_kind}}":
+- vendor: ask about availability, price and deposit for the client's event.
+- host_confirm: read back the event brief to the client and accept any corrections.
+- host_final: share the booking confirmations and thank the client.
 
-/**
- * Paste into the Cartesia vendor-call agent (Playground → agent → configuration).
- * The greeting is ONLY the disclosure variable, so every call opens with Mela's AI disclosure.
- * The server also checks the transcript: a call whose first agent turn lacks the disclosure keeps no answers.
- */
-export const VENDOR_AGENT_SETUP = {
-  initial_message: "{{mela_disclosure}}",
-  instructions: [
-    "# Identity",
-    "You are Mela, an AI assistant calling a venue or caterer for a host who is planning an event. You are not a person and never claim to be.",
-    "# Script",
-    "Context to share: {{mela_opening}}",
-    "Shared details you may mention: {{mela_shared_details}}",
-    "Ask these questions in order, word for word, one at a time, and wait for each answer:",
-    "{{mela_questions}}",
-    "# Guardrails",
-    "Never agree to: {{mela_must_not}}.",
-    "Never share the host's budget, phone number or email, or anything not listed above.",
-    "If the vendor offers to book, hold, take a deposit or card details, say the host will follow up in writing.",
-    "Do not invent or repeat back prices or dates you did not hear. After the last question, thank them, say the host will follow up in writing, and end the call.",
-  ].join("\n"),
-} as const;
+Ask only these questions, separated by " | ", one at a time: {{questions}}
+Confirm every number back to the person (dates, prices, guest counts).
+Never agree to: {{must_not_agree_to}}. Never state a price as decided. If asked to commit to anything, say "I'll pass that to the client."
+Keep your answers short and natural.
+When the questions are answered, say "{{closing}}" and then use the end_call tool.`;
 
-export class CartesiaApiError extends Error {
-  constructor(message: string, readonly status: number | null, readonly retryable: boolean) {
-    super(message);
-    this.name = "CartesiaApiError";
-  }
-}
+type Line = { role: string; text: string | null };
+type CallStatus = { status: string; endReason: string | null; transcript: Line[] | null };
+export type CartesiaClient = {
+  listPhoneNumbers(): Promise<{ id: string; number?: string; label?: string }[]>;
+  provisionNumber(label: string): Promise<{ id: string; number?: string }>;
+  listAgents(): Promise<{ id: string; name: string }[]>;
+  createAgent(name: string, config: object): Promise<{ id: string }>;
+  updateAgent(id: string, name: string, config: object): Promise<void>;
+  placeCall(args: { fromNumberId: string; agentId: string; toNumber: string; variables: Record<string, string> }): Promise<{ agentCallId: string }>;
+  getCall(agentCallId: string): Promise<CallStatus>;
+};
 
-export type FetchFn = typeof fetch;
-
-export interface CartesiaAuth {
-  apiKey: string;
-  fetchImpl?: FetchFn;
-  timeoutMs?: number;
-}
-
-const headers = (apiKey: string) => ({
-  "X-API-Key": apiKey,
-  "Cartesia-Version": CARTESIA_CALLS_VERSION,
-  "Content-Type": "application/json",
-});
-
-const OutboundResponse = z.object({
-  calls: z.array(z.object({ number: z.string(), agent_call_id: z.string().optional(), error: z.record(z.string(), z.unknown()).optional() }).passthrough()),
-});
-
-export const AgentTranscriptTurn = z
-  .object({ role: z.string(), text: z.string().nullable().optional(), start_timestamp: z.number().optional(), end_timestamp: z.number().optional() })
-  .passthrough();
-export type AgentTranscriptTurn = z.infer<typeof AgentTranscriptTurn>;
-
-/** GET /agents/calls/{call_id} → AgentCall, and the `call` field of webhook events. Only the fields Mela reads. */
-export const AgentCall = z
-  .object({
-    id: z.string(),
-    agent_id: z.string().optional(),
-    status: z.string().optional(), // created | started | completed | failed
-    start_time: z.string().nullable().optional(),
-    end_time: z.string().nullable().optional(),
-    transcript: z.array(AgentTranscriptTurn).nullable().optional(),
-    telephony_params: z.object({ to: z.string().optional(), from: z.string().optional(), direction: z.string().optional() }).passthrough().nullable().optional(),
-    error_message: z.string().nullable().optional(),
-    end_reason: z.string().nullable().optional(),
-  })
-  .passthrough();
-export type AgentCall = z.infer<typeof AgentCall>;
-
-export const WebhookEvent = z
-  .object({
-    type: z.string(),
-    call_id: z.string(),
-    agent_id: z.string().optional(),
-    webhook_request_id: z.string().optional(),
-    timestamp: z.string().optional(),
-    call: AgentCall.optional(),
-    turn: AgentTranscriptTurn.optional(),
-  })
-  .passthrough();
-export type WebhookEvent = z.infer<typeof WebhookEvent>;
-
-async function send(auth: CartesiaAuth, method: "GET" | "POST", path: string, body?: unknown): Promise<unknown> {
-  const doFetch = auth.fetchImpl ?? fetch;
-  let res: Response;
-  try {
-    res = await doFetch(`${CARTESIA_API}${path}`, {
-      method,
-      headers: headers(auth.apiKey),
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(auth.timeoutMs ?? 10_000),
+export function cartesiaClient(env: NodeJS.ProcessEnv = process.env, fetchImpl: typeof fetch = fetch): CartesiaClient {
+  const key = env.CARTESIA_API_KEY;
+  if (!key) throw new Error("Cartesia not configured");
+  const req = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
+    const res = await fetchImpl("https://api.cartesia.ai" + path, {
+      method, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000),
+      // docs use one auth header or the other per endpoint; both are accepted
+      headers: { "X-API-Key": key, Authorization: `Bearer ${key}`, "Cartesia-Version": "2026-08-14", "Content-Type": "application/json" },
     });
-  } catch (err) {
-    const code = (err as { cause?: { code?: string } }).cause?.code;
-    // Only errors that happen before the request reaches Cartesia are safe to retry:
-    // after a timeout the call may have been placed anyway.
-    const beforeSend = code === "ECONNREFUSED" || code === "ENOTFOUND" || code === "EAI_AGAIN";
-    const timedOut = (err as Error).name === "TimeoutError";
-    throw new CartesiaApiError(timedOut ? "Cartesia didn't answer in time" : `Couldn't reach Cartesia (${code ?? (err as Error).name})`, null, beforeSend);
-  }
-  const json = await res.json().catch(() => null);
-  if (!res.ok) {
-    const detail = json && typeof json === "object" ? JSON.stringify(json).slice(0, 300) : "";
-    // Documented 500 = "Outbound calling is temporarily unavailable, or provider setup failed".
-    const retryable = res.status === 429 || res.status >= 500;
-    throw new CartesiaApiError(`Cartesia returned ${res.status}${detail ? `: ${detail}` : ""}`, res.status, retryable);
-  }
-  return json;
-}
-
-/** Place one outbound call. Returns Cartesia's agent_call_id, or throws with the per-destination error. */
-export async function createOutboundCall(
-  auth: CartesiaAuth,
-  args: { agentId: string; fromNumberId: string; toNumber: string; dynamicVariables: Record<string, string>; ringingTimeoutSeconds?: number; maxCallDurationMinutes?: number },
-): Promise<{ agentCallId: string }> {
-  const json = await send(auth, "POST", "/agents/calls", {
-    from_number_id: args.fromNumberId,
-    agent_id: args.agentId,
-    ringing_timeout_seconds: args.ringingTimeoutSeconds ?? 30,
-    max_call_duration_minutes: args.maxCallDurationMinutes ?? 6,
-    outbound_calls: [{ to_number: args.toNumber, dynamic_variables: args.dynamicVariables }],
-  });
-  const parsed = OutboundResponse.safeParse(json);
-  if (!parsed.success || parsed.data.calls.length !== 1) throw new CartesiaApiError("Cartesia's call response had an unexpected shape", 200, false);
-  const call = parsed.data.calls[0]!;
-  // 200 can still carry a per-destination error; check the entry, not just the status.
-  if (call.error || !call.agent_call_id) throw new CartesiaApiError(`Cartesia couldn't start the call: ${JSON.stringify(call.error ?? {}).slice(0, 300)}`, 200, false);
-  return { agentCallId: call.agent_call_id };
-}
-
-export async function getAgentCall(auth: CartesiaAuth, callId: string): Promise<AgentCall> {
-  const json = await send(auth, "GET", `/agents/calls/${encodeURIComponent(callId)}`);
-  const parsed = AgentCall.safeParse(json);
-  if (!parsed.success) throw new CartesiaApiError("Cartesia's call status had an unexpected shape", 200, false);
-  return parsed.data;
-}
-
-// ---------------------------------------------------------------------------
-// Legacy autonomous flow (src/integrations/channel.ts, MELA_CALLS=cartesia).
-// Intentionally not wired: it would dial a vendor's listed number without a host
-// approval. Host-approved calls go through /api/calls (src/lib/calls/service.ts).
-// ---------------------------------------------------------------------------
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function placeCall(_args: { to: string; script: CallScript; callId: string }): Promise<void> {
-  if (!process.env.CARTESIA_API_KEY) throw new Error("Cartesia not configured");
-  throw new Error("The autonomous call loop is disabled; vendor calls go through the host-approved /api/calls endpoints");
-}
-
-// onCallEnded is unused: the transcript will arrive via /api/webhooks/call-ended once Line is wired.
-export function cartesiaCalls(_onCallEnded: OnCallEnded, store: Store): Pick<Channel, "callHost" | "callVendor"> {
+    const text = await res.text();
+    if (!res.ok) throw new Error(`cartesia ${res.status} ${text.slice(0, 200)}`);
+    return (text ? JSON.parse(text) : {}) as T;
+  };
+  const list = <T>(r: T[] | { data: T[] }) => (Array.isArray(r) ? r : r.data);
   return {
-    async callHost(eventId, _kind, script) {
+    listPhoneNumbers: async () => list(await req("GET", "/agents/phone-numbers")),
+    provisionNumber: (label) => req("POST", "/agents/phone-numbers/provision", { label }),
+    listAgents: async () => list(await req("GET", "/v1/agents")),
+    createAgent: (name, config) => req("POST", "/v1/agents", { name, description: "Mela outbound caller", config }),
+    // sending the name too renames a legacy "mela-caller" to "mela-caller-en"
+    updateAgent: async (id, name, config) => { await req("PATCH", `/v1/agents/${id}`, { name, config }); },
+    async placeCall({ fromNumberId, agentId, toNumber, variables }) {
+      const r = await req<{ calls: { agent_call_id?: string; error?: string }[] }>("POST", "/agents/calls", {
+        from_number_id: fromNumberId, agent_id: agentId, ringing_timeout_seconds: 45,
+        outbound_calls: [{ to_number: toNumber, dynamic_variables: variables }] });
+      const c = r.calls?.[0];
+      if (!c?.agent_call_id) throw new Error(c?.error ?? "cartesia returned no call id");
+      return { agentCallId: c.agent_call_id };
+    },
+    async getCall(id) {
+      const r = await req<{ status: string; end_reason?: string | null; transcript?: Line[] | null }>("GET", `/agents/calls/${id}`);
+      return { status: r.status, endReason: r.end_reason ?? null, transcript: r.transcript ?? null };
+    },
+  };
+}
+
+const languagePrefix = (lang: Language) => lang === "en" ? "" :
+  `You speak only ${LANGUAGE_NAMES[lang]} with the person on the call. The call script variables below are written in English; convey their meaning naturally in ${LANGUAGE_NAMES[lang]}, keeping numbers, names and amounts exact. `;
+
+export const agentConfig = (voiceId: string, lang: Language): object => ({
+  instructions: languagePrefix(lang) + AGENT_INSTRUCTIONS, initial_message: "{{opening}}", model: { id: "claude-sonnet-5" },
+  language: { primary: lang }, audio: { output: { voice_id: voiceId } },
+  system_tools: {
+    end_call: { description: "End the call after saying the closing line.", pre_tool_speech: "auto" },
+    voicemail_detection: { description: "Detect a voicemail greeting or answering machine.", pre_tool_speech: "auto",
+      message: "Hi, this is Mela, an AI assistant calling on behalf of a client. We'll follow up later. Thank you." },
+  },
+  turn: { inactivity_end_call_secs: 120, inactivity_check_in_secs: 8 },
+});
+
+// questions, closing and must_not_agree_to stay English; the agent conveys them in `language`
+export const scriptVariables = (kind: CallKind, script: CallScript, melaCallId: string, opening = script.opening, lang: Language = "en"): Record<string, string> => ({
+  call_kind: kind, opening, questions: script.questions.join(" | "), closing: script.closing,
+  must_not_agree_to: script.mustNotAgreeTo.join(", "), mela_call_id: melaCallId, language: LANGUAGE_NAMES[lang] });
+
+export function agentIdFor(lang: Language, env: NodeJS.ProcessEnv = process.env): { id: string; fallback: boolean } {
+  const own = env[`CARTESIA_AGENT_ID_${lang.toUpperCase()}`];
+  const id = own || env.CARTESIA_AGENT_ID;
+  if (!id) throw new Error(SETUP);
+  return { id, fallback: !own && lang !== "en" };
+}
+
+// The spoken opening: the fixed disclosure in the callee's language, then the rest of the English opening translated.
+export async function localizedOpening(script: CallScript, lang: Language, audit: AuditEvent[], send?: Send): Promise<string> {
+  if (lang === "en") return script.opening;
+  const rest = script.opening.replace(DISCLOSURES.en, "").replace(DISCLOSURES[lang], "").trim();
+  return rest ? `${DISCLOSURES[lang]} ${await translate(rest, lang, audit, send)}` : DISCLOSURES[lang];
+}
+
+const ROLE: Record<string, string> = { assistant: "Agent", user: "Callee" };
+export const transcriptText = (items: Line[] | null): string =>
+  (items ?? []).filter((l) => l.text && ROLE[l.role]).map((l) => `${ROLE[l.role]}: ${l.text}`).join("\n");
+
+const NO_ANSWER = new Set(["dial_no_answer", "dial_busy", "dial_failed", "dial_timeout", "voicemail_detected"]);
+export function finalTranscript(call: CallStatus): string | null {
+  if (call.status !== "completed" && call.status !== "failed") return null;
+  if (call.endReason && NO_ANSWER.has(call.endReason)) return "No answer.";
+  const text = transcriptText(call.transcript);
+  return text || "Call did not complete."; // ponytail: an empty completed call is reported like a failed one
+}
+
+export async function pollUntilEnded(client: CartesiaClient, agentCallId: string, onDone: (t: string) => Promise<void>,
+  { intervalMs = 5000, maxMs = 20 * 60_000, sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms)) } = {}): Promise<void> {
+  // sleep first: the caller persists the CallRecord after we return, before onDone can look it up
+  for (let waited = 0; waited < maxMs; waited += intervalMs) {
+    await sleep(intervalMs);
+    try {
+      const call = await client.getCall(agentCallId);
+      const t = finalTranscript(call);
+      if (t !== null) { console.log(`[cartesia] call ${agentCallId} ${call.status}/${call.endReason}`); return onDone(t); }
+    } catch (e) { console.error(`[cartesia] get call ${agentCallId} failed, retrying`, String(e)); }
+  }
+  console.log(`[cartesia] call ${agentCallId} timeout/poll_gave_up`);
+  return onDone("Call did not complete.");
+}
+
+export function cartesiaCalls(onCallEnded: OnCallEnded, store: Store, client?: CartesiaClient, send?: Send): Pick<Channel, "callHost" | "callVendor"> {
+  // audit: the caller's event.audit (it saves the event right after); without it the event is loaded and saved here
+  const call = async (eventId: string, kind: CallKind, phone: string, script: CallScript, lang: Language, audit?: AuditEvent[]) => {
+    const { id: agentId, fallback } = agentIdFor(lang);
+    const fromNumberId = process.env.CARTESIA_PHONE_NUMBER_ID;
+    if (!fromNumberId) throw new Error(SETUP);
+    const toNumber = normalizePhone(phone);
+    if (!toNumber) throw new Error(`invalid phone ${phone}`);
+    const event = audit ? null : await store.getEvent(eventId);
+    const log = audit ?? event?.audit ?? [];
+    const before = log.length;
+    if (fallback) log.push({ at: new Date().toISOString(), actor: "cartesia", action: "agent_language_fallback", detail: lang });
+    const opening = await localizedOpening(script, lang, log, send);
+    if (event && log.length > before) await store.saveEvent(event);
+    const c = client ?? cartesiaClient();
+    const callId = randomUUID();
+    const { agentCallId } = await c.placeCall({ fromNumberId, agentId, toNumber, variables: scriptVariables(kind, script, callId, opening, lang) });
+    void pollUntilEnded(c, agentCallId, (t) => onCallEnded(callId, t)).catch(console.error);
+    return { callId, providerCallId: agentCallId };
+  };
+  return {
+    async callHost(eventId, kind, script, audit) {
       const event = await store.getEvent(eventId);
       if (!event) throw new Error(`unknown event ${eventId}`);
-      const callId = randomUUID();
-      await placeCall({ to: event.hostPhone, script, callId });
-      return { callId };
+      return call(eventId, kind, event.hostPhone, script, asLanguage(event.language), audit);
     },
-    async callVendor(_eventId, vendorId, script) {
+    async callVendor(eventId, vendorId, script, audit) {
       const vendor = await store.getVendor(vendorId);
-      const to = process.env[`VENDOR_PHONE_${vendorId}`] ?? vendor?.phone;
-      if (!to) throw new Error(`no phone for vendor ${vendorId}`);
-      const callId = randomUUID();
-      await placeCall({ to, script, callId });
-      return { callId };
+      if (!vendor?.phone) throw new Error(`no phone for vendor ${vendorId}`); // VENDOR_PHONE_<id> override is applied when the store loads the seed
+      return call(eventId, "vendor", vendor.phone, script, asLanguage(vendor.language), audit);
     },
   };
 }

@@ -17,7 +17,7 @@ test("creates the vendor account once, then routes the deposit to it", async () 
   const f = fakeFetch({ "GET accounts": { json: { data: [] } }, "POST accounts": { json: { id: "acct_new" } },
     "POST payment_intents": { json: { id: "pi_123", status: "succeeded" } } }, seen);
   const r = await stripePay("sk_test_x", f).pay(args);
-  assert.deepEqual(r, { ref: "pi_123", simulated: false });
+  assert.deepEqual(r, { ref: "pi_123" });
   const created = seen.find(s => s.url.endsWith("/accounts") && s.init?.method === "POST")!.init!.body as URLSearchParams;
   assert.equal(created.get("metadata[vendorId]"), "v1"); assert.equal(created.get("business_profile[name]"), "Casa Verde"); assert.equal(created.get("type"), "express");
   const intent = seen.find(s => s.url.endsWith("/payment_intents"))!;

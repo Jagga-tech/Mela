@@ -1,4 +1,5 @@
-import type { EventBrief, FitStatus, QuoteExtract, Vendor, VendorQuote } from "./types";
+import type { EventBrief, FitStatus, QuoteExtract, RiskLevel, Vendor, VendorQuote, VendorRisk } from "./types";
+import type { FraudFinderResult, ReverseResult } from "@/integrations/crs";
 
 // ponytail: containment match covers phrasing drift between intake and seed; replace with a fixed tag list if it ever hides a real gap
 const missing = (need: string[], have: string[]) => {
@@ -41,3 +42,27 @@ export function budgetCheck(brief: EventBrief, quotes: VendorQuote[]) {
   const overByCents = budgetCents === null ? null : Math.max(0, totalCents - budgetCents);
   return { totalCents, unknownVendorIds, budgetCents, overByCents };
 }
+
+// ponytail: AtData score assumed 0-100, higher = riskier; confirm the scale with CRS at the booth
+export const RISK_BLOCK_SCORE = 80; // sandbox fraud personas score 85 and 88
+export const RISK_REVIEW_SCORE = 50;
+export const RISK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+// null input = that check could not run, which is never clear. Reasons are fixed strings, never raw CRS values.
+export function vendorRisk(ff: FraudFinderResult | null, rev: ReverseResult | null, vendor: Vendor): { level: RiskLevel; reasons: string[] } {
+  const block: string[] = [], review: string[] = [];
+  const r = ff?.risk;
+  if (r && r.score >= RISK_BLOCK_SCORE) block.push("risk score high");
+  if (r?.tumbling_risk) block.push("tumbling risk");
+  if (!r) review.push("fraud check unavailable");
+  else if (r.score >= RISK_REVIEW_SCORE && r.score < RISK_BLOCK_SCORE) review.push("risk score elevated");
+  if (r?.phone?.status && r.phone.status !== "active") review.push("phone not active");
+  if (r?.postal?.last_name_match === "no") review.push("name does not match address");
+  const last = vendor.contactLastName.trim().toLowerCase();
+  if (!rev) review.push("phone lookup unavailable");
+  else if (!rev.data?.records.some((x) => x.lastName?.trim().toLowerCase() === last)) review.push("phone not found");
+  return { level: block.length ? "block" : review.length ? "review" : "clear", reasons: [...block, ...review] };
+}
+
+export const riskIsFresh = (r: VendorRisk | null, now: Date): r is VendorRisk =>
+  !!r && now.getTime() - new Date(r.checkedAt).getTime() < RISK_TTL_MS;

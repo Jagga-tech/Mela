@@ -1,5 +1,6 @@
 // Every text Mela sends comes from here (docs/phone-plan.md "Templates"). Agents pick a template; code fills it.
 // Tone: no emoji, no exclamation marks, short complete sentences. Amounts, names and dates only from event state.
+// English only: sendText translates for hosts and vendors who chose another language.
 import { APPROVAL_TTL_MS } from "./approvals";
 import { amountToPayCents, toCents, type budgetCheck } from "./rules";
 import type { Event, EventBrief, Payment, QuoteExtract, Vendor } from "./types";
@@ -13,7 +14,7 @@ const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { m
 const longDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 // +14155550123 → (415) 555-0123; anything else is shown as given.
 const prettyPhone = (p: string) => { const d = p.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, ""); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : p; };
-const label = (p: Payment) => (p.simulated ? "simulated" : "Stripe test mode");
+const MODE = "Stripe test mode"; // every payment Mela makes is a test-mode charge, and every text says so
 const CATEGORY_LABEL = { venue: "Venue", catering: "Catering", decor: "Decor" } as const;
 
 // Prepended by sendText to the first text a host ever gets from Mela.
@@ -37,6 +38,7 @@ export function summaryText(lines: { vendor: Vendor; q: QuoteExtract }[], budget
     : budget.overByCents
       ? `Total ${total}, which is ${usd(budget.overByCents)} over your budget.`
       : budget.budgetCents === null ? `Total ${total}.` : `Total ${total} of your ${usd(budget.budgetCents)} budget.`;
+  // what is charged now: the deposit when the quote has one, otherwise the full price (same rule as amountToPayCents)
   const due = lines.reduce((sum, l) => sum + (amountToPayCents(l.q) ?? 0), 0);
   const fullPrice = lines.filter((l) => l.q.depositUsd === null && l.q.priceUsd !== null).map((l) => l.vendor.name);
   const dueLine = fullPrice.length
@@ -55,29 +57,32 @@ export const approvedText = () => "Thank you. Your plan is approved. I'm booking
 export const declinedText = () => "Understood. Nothing has been booked or paid. A planner will contact you to adjust the plan."; // T9
 export const expiredText = () => "That approval code has expired, so nothing was booked. I'll send you a new one."; // T10
 export const unknownCodeText = () => "I couldn't match that code to an open request. Please reply with the code from my most recent message."; // T11
+export const needsAttentionText = () => "Some payments need attention. A planner will contact you to finish the booking."; // T12
 export const plannerText = () => "I've passed this to a planner on our team, who will contact you shortly."; // T15
 export const stopText = () => "You won't receive any more texts from Mela. You can still follow your event on the Mela dashboard."; // T16
 export const helpText = () => "This is Mela, an AI event planning assistant. Reply STOP to stop texts. To reach a person, reply PLANNER."; // T17
 
-// T7a / T7b
-export function paymentText(vendor: Vendor, p: Payment): string {
+// T7a / T7b. isDeposit: the quote had a deposit, so that is what was charged (see amountToPayCents); otherwise the full price.
+export function paymentText(vendor: Vendor, p: Payment, isDeposit: boolean): string {
+  const what = isDeposit ? "Deposit" : "Full price";
   return p.status === "succeeded"
-    ? `Deposit of ${usd(p.amountCents)} paid to ${vendor.name} (${label(p)}). Reference ${p.ref ?? p.id}.`
-    : `The deposit to ${vendor.name} did not go through. Nothing was retried or charged twice. A planner will check it with you.`;
+    ? `${what} of ${usd(p.amountCents)} paid to ${vendor.name} (${MODE}). Reference ${p.ref ?? p.id}.`
+    : `${isDeposit ? "The deposit" : "The payment"} to ${vendor.name} did not go through. Nothing was retried or charged twice. A planner will check it with you.`;
 }
 
-export const paymentRefusedText = (vendor: Vendor, refusal: string) =>
-  `The deposit to ${vendor.name} was not made (${refusal.replace(/_/g, " ")}). A planner will check it with you.`;
+// reason: plain words from the orchestrator's refusal map, never a raw code
+export const paymentRefusedText = (vendor: Vendor, reason: string) =>
+  `The payment to ${vendor.name} was not made (${reason}). A planner will check it with you.`;
 
 // V1: to the vendor, after the payment. Client name and number were consented to in the approval text (T5).
-export function vendorConfirmText(vendor: Vendor, event: Event, p: Payment): string {
+export function vendorConfirmText(vendor: Vendor, event: Event, p: Payment, isDeposit: boolean): string {
   const b = event.brief;
   const client = event.hostName ? `${event.hostName}, ${prettyPhone(event.hostPhone)}` : prettyPhone(event.hostPhone);
   const what = [b?.eventType ? b.eventType[0].toUpperCase() + b.eventType.slice(1) : "Event", b?.dateWindow ? longDate(b.dateWindow.start) : null,
     b?.guestCount ? `${b.guestCount} guests` : null].filter(Boolean).join(", ");
   const money = p.status === "succeeded"
-    ? `Deposit of ${usd(p.amountCents)} paid (${label(p)}), reference ${p.ref ?? p.id}.`
-    : "The deposit is pending, and we'll confirm once it is sent.";
+    ? `${isDeposit ? "Deposit" : "Full price"} of ${usd(p.amountCents)} paid (${MODE}), reference ${p.ref ?? p.id}.`
+    : `${isDeposit ? "The deposit" : "The payment"} is pending, and we'll confirm once it is sent.`;
   return [`Hello ${vendor.name}, this is Mela, an AI assistant booking for a client.`, `Booking confirmed for ${client}.`, `${what}.`, money].join("\n");
 }
 
@@ -94,3 +99,13 @@ export const HOST_UPDATES = {
   planner_handoff: plannerText, // T15
 } as const;
 export type HostUpdate = keyof typeof HOST_UPDATES;
+
+// Invoices and balances (Hyphenate-style finance flow)
+export const invoiceHeldText = (vendor: Vendor, explanation: string) => `Held ${vendor.name}'s invoice: ${explanation} A planner will follow up.`;
+export const balanceApprovalText = (vendor: Vendor, balanceCents: number, code: string) =>
+  `Invoice from ${vendor.name} matches the quote. Pay the remaining ${usd(balanceCents)}? Reply YES ${code} or NO ${code}.`;
+export const invoiceSettledText = (vendor: Vendor) => `Invoice from ${vendor.name} matches the quote. Nothing more to pay.`;
+export const balanceHeldText = (vendor: Vendor) => `The remaining balance for ${vendor.name} is on hold until the deposit is reconciled.`;
+export const balancePaidText = (vendor: Vendor, p: Payment) =>
+  `Paid the remaining ${usd(p.amountCents)} to ${vendor.name} (${MODE}). Ref ${p.ref ?? p.id}.`;
+export const balanceDeclinedText = (vendor: Vendor) => `Got it, the balance for ${vendor.name} is not paid. A planner will follow up.`;

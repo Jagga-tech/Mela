@@ -59,3 +59,9 @@ function decodeBody(hex: string | null): string | null {
   if (len === 0x81) { len = buf.readUInt16LE(i + 1); i += 3; } else i += 1;
   return buf.subarray(i, i + len).toString("utf8");
 }
+
+// Highest message ROWID now, so the poller starts after existing history.
+export async function latestRowId(): Promise<number> {
+  const { stdout } = await run("sqlite3", ["-readonly", CHAT_DB, "SELECT COALESCE(MAX(ROWID), 0) FROM message"], { timeout: 10_000 });
+  return Number(stdout.trim()) || 0;
+}
