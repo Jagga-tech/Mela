@@ -93,7 +93,6 @@ test("STOP from the host stops texts; HELP and PLANNER answer; strangers get not
   assert.ok(out[0].body.startsWith("This is Mela, an AI planning assistant."), "first text introduces Mela");
   assert.ok(!out[1].body.startsWith("This is Mela, an AI planning"), "intro only once");
   const { sendText } = await import("@/agents/lead");
-  const { channel } = await import("@/lib/events");
   await sendText(after, channel, after.hostPhone, "anything");
   assert.equal(after.messages.filter((m) => m.direction === "out").length, 3, "nothing sent after STOP");
 });
